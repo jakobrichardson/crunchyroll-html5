@@ -161,6 +161,11 @@ export class ChromelessPlayerApi extends EventTarget implements IPlayerApi {
     return this._player.getSubtitleTracks();
   }
 
+  setSubtitleTracks(tracks: ISubtitleTrack[]): void {
+    if (!this._player) throw new Error("Not initialized");
+    this._player.setSubtitleTracks(tracks);
+  }
+
   setSubtitleTrack(index: number): void {
     if (!this._player) throw new Error("Not initialized");
     this._player.setSubtitleTrack(index);

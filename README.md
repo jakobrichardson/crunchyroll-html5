@@ -6,6 +6,11 @@ We really don't like flash and want it killed ASAP. However, there's currently
 no HTML5 player available for Crunchyroll without having a subscription. So this
 is the answer.
 
+## What is this fork?
+I created this fork to add support for manipulating subtitle styles. Crunchyroll does not normally aloww you to resize, change color, or change backgrounds on subtitles. For accessibility this poor to still be around in 2018 for a major service provider like them is just astounding. Since this HTML5 player converts CR's subtitles to ASS formet by building a string with a Styles section, I intercept that and apply transformations based on preferences stored in your browser's localStorage.
+
+There is a very rudimentary interface at this point. This is not designed for casual users. Also, it's only been tested in Chrome as a userscript.
+
 ## Features
 - A fully fledged HTML5 player that looks and feels a lot like YouTube's player.
 - Video quality based on the selected quality shown under the video.

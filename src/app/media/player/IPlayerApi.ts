@@ -86,7 +86,7 @@ export interface IPlayerApi extends EventTarget {
   isFullscreen(): boolean;
 
   getSubtitlesTracks(): ISubtitleTrack[];
-  
+  setSubtitleTracks(tracks: ISubtitleTrack[]): void;
   /**
    * Set the subtitle track by its index.
    * If set to -1 it will not display subtitles.

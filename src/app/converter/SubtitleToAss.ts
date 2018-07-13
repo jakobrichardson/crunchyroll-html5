@@ -1,4 +1,6 @@
 import { ISubtitle } from 'crunchyroll-lib/models/ISubtitle';
+import { ISubtitleContentStyle } from 'crunchyroll-lib/models/ISubtitleContent';
+import { SubtitleSettings } from './SubtitleSettings';
 
 export class SubtitleToAss {
   private _subtitle: ISubtitle;
@@ -9,7 +11,7 @@ export class SubtitleToAss {
 
   async getContentAsAss(): Promise<string> {
     const model = await this._subtitle.getContent();
-
+    let settings = SubtitleSettings.getInstance();
     let output = '[Script Info]\n';
     output += "Title: " + model.title + "\n";
     output += "ScriptType: v4.00+\n";
@@ -21,43 +23,10 @@ export class SubtitleToAss {
     output += "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n";
     const styles = model.styles;
     for (let i = 0; i < styles.length; i++) {
-      // Sometimes Crunchyroll sets the scaleX and scaleY to 0, which makes no
-      // sense.
-      var scaleX = styles[i].scaleX;
-      var scaleY = styles[i].scaleY;
-      if (scaleX === "0") {
-        scaleX = "100";
-      }
-      if (scaleY === "0") {
-        scaleY = "100";
-      }
-
-      output += "Style: " + styles[i].name;
-      output += ", " + styles[i].fontName;
-      output += ", " + styles[i].fontSize;
-      output += ", " + styles[i].primaryColour;
-      output += ", " + styles[i].secondaryColour;
-      output += ", " + styles[i].outlineColour;
-      output += ", " + styles[i].backColour;
-      output += ", " + styles[i].bold;
-      output += ", " + styles[i].italic;
-      output += ", " + styles[i].underline;
-      output += ", " + styles[i].strikeout;
-      output += ", " + scaleX;
-      output += ", " + scaleY;
-      output += ", " + styles[i].spacing;
-      output += ", " + styles[i].angle;
-      output += ", " + styles[i].borderStyle;
-      output += ", " + styles[i].outline;
-      output += ", " + styles[i].shadow;
-      output += ", " + styles[i].alignment;
-      output += ", " + styles[i].marginL;
-      output += ", " + styles[i].marginR;
-      output += ", " + styles[i].marginV;
-      output += ", " + styles[i].encoding;
-      output += "\n";
+      if (i == 0)
+        settings.storeDefaults(model.id, styles[i]);
+      output += settings.applyStyleSettings(styles[i]);
     }
-
     output += "\n";
     output += "[Events]\n";
     output += "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n";

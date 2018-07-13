@@ -30,6 +30,7 @@
     "package:firefox": "node build/package.firefox.js",
     "package:webextension": "node build/package.webextension.js",
     "sign:webextension": "node build/sign.webextension.js",
+    "buildus": "npm run clean && npm run build:userscript",
     "build": "npm run clean && npm run build:userscript && npm run build:webextension && npm run build:firefox",
     "build:userscript": "webpack --config config/userscript.prod.config.js",
     "build:webextension": "npm run build:webextension:background && npm run build:webextension:content && npm run build:webextension:assets",

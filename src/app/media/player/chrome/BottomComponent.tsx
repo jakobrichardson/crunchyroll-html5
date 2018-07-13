@@ -8,6 +8,8 @@ import { VolumeMuteButton } from "./VolumeMuteButton";
 import { TimeDisplay } from "./TimeDisplay";
 import { SizeButton } from "./SizeButton";
 import { FullscreenButton } from "./FullscreenButton";
+import { SubtitlesButton } from "./SubtitlesButton";
+
 
 export interface IChromeBottomProps {
   api: IPlayerApi;
@@ -106,6 +108,8 @@ export class ChromeBottomComponent extends Component<IChromeBottomProps, {}> {
             <TimeDisplay api={props.api}></TimeDisplay>
           </div>
           <div class="chrome-controls__right">
+            <SubtitlesButton
+              api={props.api}></SubtitlesButton>
             <SizeButton
               api={props.api}
               visible={props.sizeButtonVisible}
