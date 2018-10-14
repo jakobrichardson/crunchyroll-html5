@@ -1,7 +1,5 @@
-
-
 export let workerUrl: string;
-export let files: {[key: string]: { url: string }} = {};
+export let files: { [key: string]: { url: string } } = {};
 export let fonts: string[] = [];
 
 export function setWorkerUrl(url: string) {
@@ -9,7 +7,7 @@ export function setWorkerUrl(url: string) {
 }
 
 export function addFile(filename: string, url: string) {
-  files[filename] = { url: url };
+  files[filename] = { url };
 }
 
 export function getWorkerUrl() {

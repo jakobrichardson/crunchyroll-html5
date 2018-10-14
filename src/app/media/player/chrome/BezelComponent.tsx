@@ -1,15 +1,12 @@
-import { h, Component, render } from "preact";
-import { EventHandler } from "../../../libs/events/EventHandler";
+import { Component, h, render } from 'preact';
+import { EventHandler } from '../../../libs/events/EventHandler';
 
 export class BezelComponent extends Component<{}, {}> {
   private _handler: EventHandler = new EventHandler(this);
-  private _iconElement: HTMLElement;
+  private _iconElement?: Element;
 
-  private _handleAnimationEnd() {
-    this.stop();
-  }
-
-  componentDidMount() {
+  public componentDidMount() {
+    if (!this.base) throw new Error('Base is undefined');
     this._handler
       .listen(this.base, 'animationend', this._handleAnimationEnd, false)
       .listen(this.base, 'webkitAnimationEnd', this._handleAnimationEnd, false)
@@ -17,43 +14,52 @@ export class BezelComponent extends Component<{}, {}> {
       .listen(this.base, 'oAnimationEnd', this._handleAnimationEnd, false);
   }
 
-  componentWillUnmount() {
+  public componentWillUnmount() {
     this._handler.removeAll();
   }
 
-  play(element: JSX.Element): void {
-    this.stop();
-
-    this._iconElement.innerHTML = "";
-    render(element, this._iconElement);
-
-    // Trigger reflow
-    void this.base.offsetWidth;
-
-    // Display bezel animation
-    this.base.style.display = "";
-  }
-
-  playSvgPath(d: string): void {
+  public playSvgPath(d: string): void {
     const el = (
       <svg height="100%" version="1.1" viewBox="0 0 36 36" width="100%">
-        <path fill="#ffffff" d={d}></path>
+        <path fill="#ffffff" d={d} />
       </svg>
     );
 
-    this.play(el);
+    this._play(el);
   }
 
-  stop(): void {
-    this.base.style.display = "none";
+  public stop(): void {
+    if (!this.base) throw new Error('Base is undefined');
+    this.base.style.display = 'none';
   }
 
-  render(): JSX.Element {
-    const iconRef = (el: HTMLElement) => this._iconElement = el;
+  public render(): JSX.Element {
+    const iconRef = (el?: Element) => (this._iconElement = el);
     return (
       <div class="chrome-bezel" role="status" style="display: none">
-        <div class="chrome-bezel-icon" ref={iconRef}></div>
+        <div class="chrome-bezel-icon" ref={iconRef} />
       </div>
     );
+  }
+
+  private _play(element: JSX.Element): void {
+    if (!this.base) throw new Error('Base is undefined');
+    this.stop();
+
+    if (this._iconElement) {
+      this._iconElement.innerHTML = '';
+      render(element, this._iconElement);
+    }
+
+    // Trigger reflow
+    // tslint:disable-next-line:no-unused-expression
+    void this.base.offsetWidth;
+
+    // Display bezel animation
+    this.base.style.display = '';
+  }
+
+  private _handleAnimationEnd() {
+    this.stop();
   }
 }

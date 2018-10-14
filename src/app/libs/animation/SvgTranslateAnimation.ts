@@ -1,4 +1,4 @@
-import { SvgPathMorphAnimation } from "./SvgPathMorphAnimation";
+import { SvgPathMorphAnimation } from './SvgPathMorphAnimation';
 
 export class SvgTranslateAnimation extends SvgPathMorphAnimation {
   private _translateToX: number = 0;
@@ -19,23 +19,30 @@ export class SvgTranslateAnimation extends SvgPathMorphAnimation {
     this._translateElements = translateElements;
   }
 
-  protected tickInternal(progress: number) {
-    super.tickInternal(progress);
-
-    var x = (this._translateToX - this._translateFromX)*progress + this._translateFromX;
-    var y = (this._translateToY - this._translateFromY)*progress + this._translateFromY;
-    for (let i = 0; i < this._translateElements.length; i++) {
-      this._translateElements[i].setAttribute("transform", "translate(" + x + "," + y + ")");
-    }
-  }
-
-  setTranslateTo(x: number, y: number) {
+  public setTranslateTo(x: number, y: number) {
     this._translateToX = x;
     this._translateToY = y;
   }
 
-  setTranslateFrom(x: number, y: number) {
+  public setTranslateFrom(x: number, y: number) {
     this._translateFromX = x;
     this._translateFromY = y;
+  }
+
+  protected tickInternal(progress: number) {
+    super.tickInternal(progress);
+
+    const x =
+      (this._translateToX - this._translateFromX) * progress +
+      this._translateFromX;
+    const y =
+      (this._translateToY - this._translateFromY) * progress +
+      this._translateFromY;
+    for (const translateElement of this._translateElements) {
+      translateElement.setAttribute(
+        'transform',
+        'translate(' + x + ',' + y + ')'
+      );
+    }
   }
 }

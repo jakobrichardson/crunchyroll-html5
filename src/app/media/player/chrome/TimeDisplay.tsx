@@ -1,26 +1,65 @@
-import { IPlayerApi, DurationChangeEvent, TimeUpdateEvent } from "../IPlayerApi";
-import { h, Component } from "preact";
-import { EventHandler } from "../../../libs/events/EventHandler";
-import { parseAndFormatTime } from "../../../utils/time";
+import { Component, h } from 'preact';
+import { EventHandler } from '../../../libs/events/EventHandler';
+import { parseAndFormatTime } from '../../../utils/time';
+import { DurationChangeEvent } from '../DurationChangeEvent';
+import { IPlayerApi } from '../IPlayerApi';
+import { TimeUpdateEvent } from '../TimeUpdateEvent';
 
 export interface ITimeDisplayProps {
-  api: IPlayerApi
+  api: IPlayerApi;
 }
 
-export class TimeDisplay extends Component<ITimeDisplayProps, {}> {
-  private _currentTimeElement: HTMLElement;
-  private _durationTimeElement: HTMLElement;
+export interface ITimeDisplayState {
+  currentTime: string;
+  durationTime: string;
+}
 
+export class TimeDisplay extends Component<
+  ITimeDisplayProps,
+  ITimeDisplayState
+> {
   private _handler: EventHandler = new EventHandler(this);
 
   private _currentTime: number = NaN;
   private _duration: number = NaN;
 
+  constructor() {
+    super();
+
+    this.state = {
+      currentTime: '--:--',
+      durationTime: '--:--'
+    };
+  }
+
+  public componentDidMount() {
+    this._handler
+      .listen(this.props.api, 'timeupdate', this._onTimeUpdate, false)
+      .listen(this.props.api, 'durationchange', this._onDurationChange, false);
+  }
+
+  public componentWillUnmount() {
+    this._handler.removeAll();
+  }
+
+  public render(
+    {  }: ITimeDisplayProps,
+    { currentTime, durationTime }: ITimeDisplayState
+  ): JSX.Element {
+    return (
+      <div class="chrome-time-display">
+        <span class="chrome-time-current">{currentTime}</span>
+        <span class="chrome-time-separator"> / </span>
+        <span class="chrome-time-duration">{durationTime}</span>
+      </div>
+    );
+  }
+
   private _onTimeUpdate(e: TimeUpdateEvent) {
     this._currentTime = e.time;
     this._updateState();
   }
-  
+
   private _onDurationChange(e: DurationChangeEvent) {
     this._duration = e.duration;
     this._updateState();
@@ -30,41 +69,18 @@ export class TimeDisplay extends Component<ITimeDisplayProps, {}> {
     const currentTime = this._currentTime;
     const duration = this._duration;
 
-    if (isNaN(currentTime)) {
-      this._currentTimeElement.textContent = '--:--';
-    } else {
-      this._currentTimeElement.textContent = parseAndFormatTime(currentTime);
+    const newState: ITimeDisplayState = {
+      currentTime: '--:--',
+      durationTime: '--:--'
+    };
+
+    if (!isNaN(currentTime)) {
+      newState.currentTime = parseAndFormatTime(currentTime);
     }
-    if (isNaN(duration)) {
-      this._durationTimeElement.textContent = '--:--';
-    } else {
-      this._durationTimeElement.textContent = parseAndFormatTime(duration);
+    if (!isNaN(duration)) {
+      newState.durationTime = parseAndFormatTime(duration);
     }
-  }
 
-  componentDidMount() {
-    this._handler
-      .listen(this.props.api, 'timeupdate', this._onTimeUpdate, false)
-      .listen(this.props.api, 'durationchange', this._onDurationChange, false);
-  }
-
-  componentWillUnmount() {
-    this._handler.removeAll();
-  }
-
-  render(props: ITimeDisplayProps): JSX.Element {
-    const currentRef = (el: HTMLElement) => this._currentTimeElement = el;
-    const durationRef = (el: HTMLElement) => this._durationTimeElement = el;
-
-    this._currentTime = props.api.getCurrentTime();
-    this._duration = props.api.getDuration();
-
-    return (
-      <div class="chrome-time-display">
-        <span class="chrome-time-current" ref={currentRef}>--:--</span>
-        <span class="chrome-time-separator"> / </span>
-        <span class="chrome-time-duration" ref={durationRef}>--:--</span>
-      </div>
-    );
+    this.setState(newState);
   }
 }

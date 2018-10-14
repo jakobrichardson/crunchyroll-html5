@@ -1,12 +1,18 @@
 import { Disposable } from '../disposable/Disposable';
-import { Listener } from './Listener';
-import { Key, ListenableType, listen, listenOnce, getListener, unlistenByKey } from './index';
-import { EventTarget as LEventTarget } from './EventTarget';
-import { ListenableKey } from './ListenableKey';
+import { Event as MyEvent } from './Event';
+import { ListneableFunction } from './IListenable';
+import { IListenableKey } from './IListenableKey';
+import {
+  getListener,
+  listen,
+  ListenableType,
+  listenOnce,
+  unlistenByKey
+} from './index';
 
 export class EventHandler extends Disposable {
-  private _scope: Object;
-  private _keys: {[key: string]: ListenableKey} = {};
+  private _scope: any;
+  private _keys: { [key: string]: IListenableKey } = {};
 
   constructor(scope?: any) {
     super();
@@ -14,14 +20,20 @@ export class EventHandler extends Disposable {
     this._scope = scope;
   }
 
-  protected disposeInternal() {
-    super.disposeInternal();
-
-    this.removeAll();
-  }
-
-  listen(src: ListenableType, type: string, fn?: Function, options: boolean|AddEventListenerOptions = false, scope?: Object): EventHandler {
-    const listenerObj = listen(src, type, fn || this.handleEvent, options, scope || this._scope || this);
+  public listen(
+    src: ListenableType,
+    type: string,
+    fn?: ListneableFunction,
+    options: boolean | AddEventListenerOptions = false,
+    scope?: any
+  ): EventHandler {
+    const listenerObj = listen(
+      src,
+      type,
+      fn || this.handleEvent,
+      options,
+      scope || this._scope || this
+    );
 
     if (!listenerObj) {
       return this;
@@ -29,27 +41,50 @@ export class EventHandler extends Disposable {
 
     const key = listenerObj.key;
     this._keys[key] = listenerObj;
-  
+
     return this;
   }
 
-  listenOnce(src: ListenableType, type: string, fn?: Function, options: boolean|AddEventListenerOptions = false, scope?: Object): EventHandler {
-    const listenerObj = listenOnce(src, type, fn || this.handleEvent, options, scope || this._scope || this);
-    
+  public listenOnce(
+    src: ListenableType,
+    type: string,
+    fn?: ListneableFunction,
+    options: boolean | AddEventListenerOptions = false,
+    scope?: any
+  ): EventHandler {
+    const listenerObj = listenOnce(
+      src,
+      type,
+      fn || this.handleEvent,
+      options,
+      scope || this._scope || this
+    );
+
     if (!listenerObj) {
       return this;
     }
 
     const key = listenerObj.key;
     this._keys[key] = listenerObj;
-  
+
     return this;
   }
 
-  unlisten(src: ListenableType, type: string, fn?: Function, options: boolean|AddEventListenerOptions = false, scope?: Object) {
+  public unlisten(
+    src: ListenableType,
+    type: string,
+    fn?: ListneableFunction,
+    options: boolean | AddEventListenerOptions = false,
+    scope?: any
+  ) {
     const capture = typeof options === 'object' ? !!options.capture : !!options;
-    const listener = getListener(src, type, fn || this.handleEvent, capture,
-        scope || this._scope || this);
+    const listener = getListener(
+      src,
+      type,
+      fn || this.handleEvent,
+      capture,
+      scope || this._scope || this
+    );
 
     if (listener) {
       unlistenByKey(listener);
@@ -59,20 +94,19 @@ export class EventHandler extends Disposable {
     return this;
   }
 
-  removeAll() {
-    for (let key in this._keys) {
-      let listenerObj = this._keys[key];
+  public removeAll() {
+    for (const key in this._keys) {
       if (this._keys.hasOwnProperty(key)) {
-        unlistenByKey(listenerObj);
+        unlistenByKey(this._keys[key]);
       }
     }
-  
+
     this._keys = {};
   }
 
-  getListenerCount(): number {
+  public getListenerCount(): number {
     let count = 0;
-    for (let key in this._keys) {
+    for (const key in this._keys) {
       if (Object.prototype.hasOwnProperty.call(this._keys, key)) {
         count++;
       }
@@ -80,7 +114,13 @@ export class EventHandler extends Disposable {
     return count;
   }
 
-  handleEvent() {
+  public handleEvent(event: MyEvent): boolean | void {
     throw new Error('EventHandler.handleEvent not implemented');
+  }
+
+  protected disposeInternal() {
+    super.disposeInternal();
+
+    this.removeAll();
   }
 }

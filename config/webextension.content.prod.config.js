@@ -3,6 +3,7 @@ const common = require('./webextension.content.config.js');
 const UglifyJSPlugin = require('uglifyjs-webpack-plugin');
 
 common.plugins = [
+  ...common.plugins,
   new UglifyJSPlugin()
 ];
 

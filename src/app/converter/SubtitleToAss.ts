@@ -1,6 +1,6 @@
 import { ISubtitle } from 'crunchyroll-lib/models/ISubtitle';
 import { ISubtitleContentStyle } from 'crunchyroll-lib/models/ISubtitleContent';
-import { SubtitleSettings } from './SubtitleSettings';
+import { SubtitleTransformSettings } from './SubtitleTransformSettings';
 
 export class SubtitleToAss {
   private _subtitle: ISubtitle;
@@ -9,9 +9,9 @@ export class SubtitleToAss {
     this._subtitle = subtitle;
   }
 
-  async getContentAsAss(): Promise<string> {
+  public async getContentAsAss(): Promise<string> {
     const model = await this._subtitle.getContent();
-    let settings = SubtitleSettings.getInstance();
+    let settings = SubtitleTransformSettings.getInstance();
     let output = '[Script Info]\n';
     output += "Title: " + model.title + "\n";
     output += "ScriptType: v4.00+\n";

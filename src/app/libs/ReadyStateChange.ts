@@ -1,11 +1,6 @@
-import { EventTarget } from "./events/EventTarget";
-import { Event } from "./events/Event";
-
-export enum ReadyState {
-  Loading,
-  Interactive,
-  Complete
-}
+import { EventTarget } from './events/EventTarget';
+import { ReadyState } from './ReadyState';
+import { ReadyStateChangeEvent } from './ReadyStateChangeEvent';
 
 /**
  * Convert a DocumentReadyState to ReadyState.
@@ -13,11 +8,11 @@ export enum ReadyState {
  */
 const toReadyState = (readyState: DocumentReadyState) => {
   switch (readyState) {
-    case "loading":
+    case 'loading':
       return ReadyState.Loading;
-    case "interactive":
+    case 'interactive':
       return ReadyState.Interactive;
-    case "complete":
+    case 'complete':
       return ReadyState.Complete;
   }
 };
@@ -32,30 +27,20 @@ export class ReadyStateChange extends EventTarget {
     this._document = document;
   }
 
-  getCurrentReadyState(): ReadyState|undefined {
+  public getCurrentReadyState(): ReadyState | undefined {
     return this._currentReadyState;
   }
 
-  tick() {
+  public tick() {
     const readyState = toReadyState(this._document.readyState);
-    const currentReadyStatePriority
-      = this._currentReadyState === undefined
-      ? -1
-      : this._currentReadyState as number;
+    const currentReadyStatePriority =
+      this._currentReadyState === undefined
+        ? -1
+        : (this._currentReadyState as number);
 
     for (let i = currentReadyStatePriority + 1; i <= readyState; i++) {
       this._currentReadyState = i;
       this.dispatchEvent(new ReadyStateChangeEvent(i, this));
     }
-  }
-}
-
-export class ReadyStateChangeEvent extends Event {
-  public readyState: ReadyState;
-
-  constructor(readyState: ReadyState, target?: Object) {
-    super("readystatechange", target);
-
-    this.readyState = readyState;
   }
 }

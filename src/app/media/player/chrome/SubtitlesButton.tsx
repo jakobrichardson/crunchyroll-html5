@@ -1,7 +1,7 @@
 import { h, Component } from "preact";
 import { IPlayerApi, PlaybackState } from "../IPlayerApi";
 import { EventHandler } from "../../../libs/events/EventHandler";
-import { SubtitleSettings } from '../../../converter/SubtitleSettings';
+import { SubtitleTransformSettings } from '../../../converter/SubtitleTransformSettings';
 
 export interface ISubtitlesButtonProps {
   api: IPlayerApi;
@@ -9,7 +9,7 @@ export interface ISubtitlesButtonProps {
 
 export class SubtitlesButton extends Component<ISubtitlesButtonProps, {}> {
   private _handler = new EventHandler(this);
-  private _subtitleSettings = SubtitleSettings.getInstance();
+  private _subtitleSettings = SubtitleTransformSettings.getInstance();
   constructor(props: ISubtitlesButtonProps) {
     super(props)
     this.state = { modalIsOpen: false }
@@ -67,7 +67,7 @@ export class SubtitlesButton extends Component<ISubtitlesButtonProps, {}> {
 
 interface ModalProps {
   api: IPlayerApi;
-  settings: SubtitleSettings;
+  settings: SubtitleTransformSettings;
   isOpen: boolean;
   onClose: any;
 }
@@ -110,9 +110,8 @@ class Modal extends Component<ModalProps, {}> {
       if (stateValue != storedValue)
         this.props.settings.setSetting(prop, stateValue);
     })
-    let tracks = this.props.api.getSubtitlesTracks();
-    this.props.api.setSubtitleTracks(tracks);
-    this.props.api.setSubtitleTrack(0);
+    let track = this.props.api.getSubtitleTrack();
+    this.props.api.setSubtitleTrack(track);
     this.props.onClose();
     return false;
   }

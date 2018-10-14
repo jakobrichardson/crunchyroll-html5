@@ -1,24 +1,41 @@
-import { h, Component, render } from 'preact';
-import { ChromelessPlayer } from './ChromelessPlayer';
-import { HlsSource } from './HlsSource';
-import { ISource } from './ISource';
-import { ISubtitleTrack } from '../subtitles/ISubtitleTrack';
-import { requestFullscreen, exitFullscreen, getFullscreenElement } from '../../utils/fullscreen';
-import { ChromeBottomComponent } from './chrome/BottomComponent';
-import { parseSimpleQuery } from '../../utils/url';
-import { IPlayerApi, PlaybackState, IVideoDetail } from './IPlayerApi';
-import { ChromelessPlayerApi } from './ChromelessPlayerApi';
-import { EventHandler } from '../../libs/events/EventHandler';
+import { Component, h } from 'preact';
+import container from '../../../config/inversify.config';
+import { IAction } from '../../libs/actions/IAction';
+import { IActionable } from '../../libs/actions/IActionable';
 import { BrowserEvent } from '../../libs/events/BrowserEvent';
-import { CuedThumbnailComponent } from './CuedThumbnailComponent';
-import { ChromeTooltip, IChromeTooltip } from './chrome/Tooltip';
-import { parseAndFormatTime } from '../../utils/time';
+import { EventHandler } from '../../libs/events/EventHandler';
+import { IMediaSubtitle } from '../../models/IMediaSubtitle';
+import {
+  IQualityResolver,
+  IQualityResolverSymbol
+} from '../../models/IQualityResolver';
 import { IRect } from '../../utils/rect';
+import { parseAndFormatTime } from '../../utils/time';
+import { parseSimpleQuery } from '../../utils/url';
+import { ISubtitleTrack } from '../subtitles/ISubtitleTrack';
+import {
+  ICON_PAUSE,
+  ICON_PLAY,
+  ICON_SEEK_BACK_10,
+  ICON_SEEK_BACK_5,
+  ICON_SEEK_FORWARD,
+  ICON_SEEK_FORWARD_10,
+  ICON_SEEK_FORWARD_5,
+  ICON_VOLUME,
+  ICON_VOLUME_HIGH,
+  ICON_VOLUME_MUTE
+} from './assets';
 import { BezelComponent } from './chrome/BezelComponent';
-import { ICON_PAUSE, ICON_PLAY, ICON_SEEK_BACK_5, ICON_VOLUME, ICON_VOLUME_HIGH, ICON_SEEK_FORWARD, ICON_SEEK_FORWARD_5, ICON_SEEK_BACK_10, ICON_SEEK_FORWARD_10, ICON_VOLUME_MUTE } from './assets';
+import { ChromeBottomComponent } from './chrome/BottomComponent';
 import { BufferComponent } from './chrome/BufferComponent';
-import { ISubtitle } from 'crunchyroll-lib/models/ISubtitle';
-import { SubtitleToAss } from '../../converter/SubtitleToAss';
+import { ChromeSettingsPopup } from './chrome/SettingsPopup';
+import { ChromeTooltip, IChromeTooltip } from './chrome/Tooltip';
+import { ChromelessPlayer } from './ChromelessPlayer';
+import { ChromelessPlayerApi } from './ChromelessPlayerApi';
+import { CuedThumbnailComponent } from './CuedThumbnailComponent';
+import { HlsSource } from './HlsSource';
+import { IPlayerApi, IVideoDetail, PlaybackState } from './IPlayerApi';
+import { PlayerAction } from './PlayerAction';
 
 export interface IPlayerProps {
   config?: IPlayerConfig;
@@ -27,49 +44,59 @@ export interface IPlayerProps {
   onSizeChange?: (large: boolean) => void;
 }
 
+export interface IPlayerState {
+  maxPopupHeight: number;
+}
+
 export interface IPlayerConfig {
   title?: string;
   url?: string;
   thumbnailUrl?: string;
-  subtitles?: ISubtitle[];
+  subtitles?: IMediaSubtitle[];
   duration?: number;
   nextVideo?: IVideoDetail;
   startTime?: number;
   autoplay?: boolean;
   volume?: number;
   muted?: boolean;
+  quality?: string;
 }
 
-export class Player extends Component<IPlayerProps, {}> {
+export class Player extends Component<IPlayerProps, IPlayerState>
+  implements IActionable {
   private _configCued: boolean = false;
-  private _config: IPlayerConfig|undefined = undefined;
-  private _actionElement: HTMLElement;
-  private _chromelessPlayer: ChromelessPlayer;
-  private _cuedThumbnailComponent: CuedThumbnailComponent;
-  private _bottomComponent: ChromeBottomComponent;
-  private _tooltipComponent: ChromeTooltip;
-  private _bezelElement: BezelComponent;
+  private _config: IPlayerConfig | undefined = undefined;
+  private _actionElement?: Element;
+  private _chromelessPlayer?: ChromelessPlayer;
+  private _cuedThumbnailComponent?: CuedThumbnailComponent;
+  private _bottomComponent?: ChromeBottomComponent;
+  private _tooltipComponent?: ChromeTooltip;
+  private _bezelElement?: BezelComponent;
   private _api: IPlayerApi = new ChromelessPlayerApi();
   private _handler: EventHandler = new EventHandler(this);
 
-  private _tooltipBottomRect: IRect;
-  private _nextVideoButtonRect: IRect;
-  private _sizeButtonRect: IRect;
-  private _fullscreenButtonRect: IRect;
-  private _volumeMuteButtonRect: IRect;
+  private _tooltipBottomRect?: IRect;
+  private _nextVideoButtonRect?: IRect;
+  private _sizeButtonRect?: IRect;
+  private _fullscreenButtonRect?: IRect;
+  private _volumeMuteButtonRect?: IRect;
+  private _settingsButtonRect?: IRect;
 
   private _autoHide: boolean = true;
-  private _autoHideTimer: number;
+  private _autoHideTimer?: number;
   private _autoHideDelay: number = 200;
   private _autoHideMoveDelay: number = 3000;
   private _preview: boolean = false;
+  private _forceHide: boolean = false;
 
-  private _actionClickTimer: number|undefined = undefined;
+  private _actionClickTimer: number | undefined = undefined;
   private _actionClickExecuted: boolean = false;
 
   private _mouseDown: boolean = false;
 
   private _bigMode: boolean = false;
+
+  private _actions?: IAction[];
 
   constructor(props: IPlayerProps) {
     super(props);
@@ -78,9 +105,88 @@ export class Player extends Component<IPlayerProps, {}> {
       this._config = props.config;
     }
     this._api.setLarge(!!props.large);
+    this.state = {
+      maxPopupHeight: 0
+    };
   }
 
-  cueVideoByConfig(config: IPlayerConfig) {
+  public getActions(): IAction[] {
+    if (!this._actions) {
+      const api = this.getApi();
+      this._actions = [
+        new PlayerAction('seek_forward_85s', () => {
+          this._playSvgBezel(ICON_SEEK_FORWARD);
+          api.seekTo(Math.min(api.getCurrentTime() + 85, api.getDuration()));
+        }),
+        new PlayerAction('seek_start', () => api.seekTo(0)),
+        new PlayerAction('seek_10%', () => api.seekTo(api.getDuration() * 0.1)),
+        new PlayerAction('seek_20%', () => api.seekTo(api.getDuration() * 0.2)),
+        new PlayerAction('seek_30%', () => api.seekTo(api.getDuration() * 0.3)),
+        new PlayerAction('seek_40%', () => api.seekTo(api.getDuration() * 0.4)),
+        new PlayerAction('seek_50%', () => api.seekTo(api.getDuration() * 0.5)),
+        new PlayerAction('seek_60%', () => api.seekTo(api.getDuration() * 0.6)),
+        new PlayerAction('seek_70%', () => api.seekTo(api.getDuration() * 0.7)),
+        new PlayerAction('seek_80%', () => api.seekTo(api.getDuration() * 0.8)),
+        new PlayerAction('seek_90%', () => api.seekTo(api.getDuration() * 0.9)),
+        new PlayerAction('seek_end', () => api.seekTo(api.getDuration())),
+        new PlayerAction('seek_forward_5s', () => {
+          this._playSvgBezel(ICON_SEEK_FORWARD_5);
+          api.seekTo(Math.min(api.getCurrentTime() + 5, api.getDuration()));
+        }),
+        new PlayerAction('seek_forward_10s', () => {
+          this._playSvgBezel(ICON_SEEK_FORWARD_10);
+          api.seekTo(Math.min(api.getCurrentTime() + 10, api.getDuration()));
+        }),
+        new PlayerAction('seek_backward_5s', () => {
+          this._playSvgBezel(ICON_SEEK_BACK_5);
+          api.seekTo(Math.max(api.getCurrentTime() - 5, 0));
+        }),
+        new PlayerAction('seek_backward_10s', () => {
+          this._playSvgBezel(ICON_SEEK_BACK_10);
+          api.seekTo(Math.max(api.getCurrentTime() - 10, 0));
+        }),
+        new PlayerAction('volume_up', () => {
+          this._playSvgBezel(ICON_VOLUME + ' ' + ICON_VOLUME_HIGH);
+          api.setVolume(Math.min(api.getVolume() + 5 / 100, 1));
+        }),
+        new PlayerAction('volume_down', () => {
+          this._playSvgBezel(ICON_VOLUME);
+          api.setVolume(Math.max(api.getVolume() - 5 / 100, 0));
+        }),
+        new PlayerAction('toggle_fullscreen', () => api.toggleFullscreen()),
+        new PlayerAction('mute_unmute', () => {
+          if (!api.isMuted()) {
+            this._playSvgBezel(ICON_VOLUME_MUTE);
+            api.mute();
+          } else {
+            this._playSvgBezel(ICON_VOLUME + ' ' + ICON_VOLUME_HIGH);
+            api.unmute();
+          }
+        }),
+        new PlayerAction('next_video', () => api.playNextVideo()),
+        new PlayerAction('play_pause', () => {
+          const playing =
+            api.getPreferredPlaybackState() === PlaybackState.PLAYING;
+          if (playing) {
+            this._playSvgBezel(ICON_PAUSE);
+            api.pauseVideo();
+          } else {
+            this._playSvgBezel(ICON_PLAY);
+            api.playVideo();
+          }
+        }),
+        new PlayerAction('toggle_hide', () =>
+          this.setForceHide(!this.isForceHide())
+        )
+      ];
+    }
+    return this._actions;
+  }
+
+  public cueVideoByConfig(config: IPlayerConfig) {
+    if (!this._cuedThumbnailComponent)
+      throw new Error('CuedThumbnailComponent is undefined');
+
     this._config = config;
     this._configCued = true;
     if (config.thumbnailUrl) {
@@ -95,7 +201,10 @@ export class Player extends Component<IPlayerProps, {}> {
     this.resize();
   }
 
-  loadVideoByConfig(config: IPlayerConfig) {
+  public loadVideoByConfig(config: IPlayerConfig) {
+    if (!this._cuedThumbnailComponent)
+      throw new Error('CuedThumbnailComponent is undefined');
+
     this._config = config;
     this._updateChromelessPlayer(config);
     if (config.thumbnailUrl && !config.url) {
@@ -112,66 +221,18 @@ export class Player extends Component<IPlayerProps, {}> {
     this.resize();
   }
 
-  private async _updateChromelessPlayer(config: IPlayerConfig) {
-    this._configCued = false;
-    if (config.subtitles) {
-      const tracks: ISubtitleTrack[] = [];
-      let defaultTrack: number = -1;
-      let selectedSubtitleId: number|undefined = undefined;
-      let queries = parseSimpleQuery(location.search);
+  public setPreview(preview: boolean): void {
+    if (!this._cuedThumbnailComponent)
+      throw new Error('CuedThumbnailComponent is undefined');
+    if (!this.base) throw new Error('Player base is undefined');
 
-      for (let i = 0; i < config.subtitles.length; i++) {
-        let useSubtitle = false;
-        if (queries.hasOwnProperty('ssid')) {
-          let id: string = queries['ssid'];
-          useSubtitle = config.subtitles[i].getId().toString() === id;
-        } else {
-          useSubtitle = config.subtitles[i].isDefault();
-        }
-        if (useSubtitle) {
-          defaultTrack = i;
-        }
-        
-        let subtitle = config.subtitles[i];
-        tracks.push({
-          label: subtitle.getTitle(),
-          getContent: async (): Promise<string> => {
-            const converter = new SubtitleToAss(subtitle);
-            return await converter.getContentAsAss();
-          }
-        });
-      }
-      this._chromelessPlayer.setSubtitleTracks(tracks);
-      this._chromelessPlayer.setSubtitleTrack(defaultTrack);
-    }
-
-    if (config.volume !== undefined) {
-      this._chromelessPlayer.setVolume(config.volume);
-    }
-
-    if (config.muted !== undefined) {
-      this._chromelessPlayer.setMuted(config.muted);
-    }
-
-    if (config.url) {
-      this._chromelessPlayer.setVideoSource(new HlsSource(config.url), config.startTime);
-    } else {
-      this._chromelessPlayer.removeVideoSource();
-    }
-    
-    if (typeof config.duration === 'number') {
-      this._chromelessPlayer.setDuration(config.duration);
-    } else {
-      this._chromelessPlayer.setDuration(NaN);
-    }
-  }
-
-  setPreview(preview: boolean): void {
     this._preview = preview;
 
     if (preview) {
       this.base.classList.add('html5-video-player--preview');
-      this._cuedThumbnailComponent.setVisible(!!this._cuedThumbnailComponent.getThumbnailUrl());
+      this._cuedThumbnailComponent.setVisible(
+        !!this._cuedThumbnailComponent.getThumbnailUrl()
+      );
     } else {
       this.base.classList.remove('html5-video-player--preview');
       this._cuedThumbnailComponent.setVisible(false);
@@ -180,16 +241,34 @@ export class Player extends Component<IPlayerProps, {}> {
     this.updateInternalAutoHide();
   }
 
-  isPreview(): boolean {
+  public isPreview(): boolean {
     return this._preview;
   }
 
-  setAutoHide(hide: boolean): void {
+  public setAutoHide(hide: boolean): void {
     this._autoHide = hide;
     this.updateInternalAutoHide();
   }
 
-  updateInternalAutoHide(): void {
+  public setForceHide(hide: boolean): void {
+    this._forceHide = hide;
+    this.updateInternalAutoHide();
+  }
+
+  public isForceHide(): boolean {
+    return this._forceHide;
+  }
+
+  public focus(): void {
+    if (!this.base) return;
+
+    this.base.focus();
+  }
+
+  public updateInternalAutoHide(): void {
+    if (!this._bottomComponent) throw new Error('BottomComponent is undefined');
+    if (!this.base) throw new Error('Player base is undefined');
+
     let hide = this._autoHide;
 
     if (this._mouseDown) {
@@ -200,445 +279,97 @@ export class Player extends Component<IPlayerProps, {}> {
     if (state !== PlaybackState.PLAYING) {
       hide = false;
     }
-    if (this._preview) {
-      hide = true;
+
+    if (this._api.isSettingsOpen()) {
+      hide = false;
     }
 
-    if (hide) {
+    const forceHide = this.isForceHide();
+    let requireResizeCalculations = false;
+
+    if (forceHide) {
+      this.base.classList.add('html5-video-player--autohide--force');
+    } else {
+      requireResizeCalculations = this.base.classList.contains(
+        'html5-video-player--autohide--force'
+      );
+      this.base.classList.remove('html5-video-player--autohide--force');
+    }
+
+    if (hide || this._preview || forceHide) {
       this.base.classList.add('html5-video-player--autohide');
       this._bottomComponent.setInternalVisibility(false);
+
+      if (!this._preview && hide) {
+        this.base.classList.add('html5-video-player--autohide--hide-cursor');
+      } else {
+        this.base.classList.remove('html5-video-player--autohide--hide-cursor');
+      }
     } else {
       this.base.classList.remove('html5-video-player--autohide');
       this._bottomComponent.setInternalVisibility(true);
     }
-  }
 
-  getApi(): IPlayerApi {
-    return this._api;
-  }
-
-  private _onSizeChange(): void {
-    const large = this._api.isLarge();
-    if (large) {
-      this.base.classList.add("html5-video-player--large");
-    } else {
-      this.base.classList.remove("html5-video-player--large");
-    }
-
-    if (this.props.onSizeChange) {
-      this.props.onSizeChange(large);
-    }
-
-    this._tooltipComponent.base.style.display = "none";
-
-    this.resize();
-  }
-
-  private _onMouseMouse(e: BrowserEvent) {
-    window.clearTimeout(this._autoHideTimer);
-    this.setAutoHide(false);
-
-    const el = this._bottomComponent.base;
-
-    if (e.target !== el && !el.contains(e.target as Node)) {
-      this._autoHideTimer = window.setTimeout(
-        () => this.setAutoHide(true),
-        this._autoHideMoveDelay
-      );
-    }
-  }
-
-  private _onMouseLeave(e: BrowserEvent) {
-    window.clearTimeout(this._autoHideTimer);
-    this._autoHideTimer = window.setTimeout(
-      () => this.setAutoHide(true),
-      this._autoHideDelay
-    );
-  }
-
-  private _playSvgBezel(d: string): void {
-    this._bezelElement.playSvgPath(d);
-  }
-
-  private _onKeyDown(e: BrowserEvent) {
-    const api = this.getApi();
-    switch (e.keyCode) {
-      case 49:
-        api.seekTo(api.getDuration()*0.1);
-        break;
-      case 50:
-        api.seekTo(api.getDuration()*0.2);
-        break;
-      case 51:
-        api.seekTo(api.getDuration()*0.3);
-        break;
-      case 52:
-        api.seekTo(api.getDuration()*0.4);
-        break;
-      case 53:
-        api.seekTo(api.getDuration()*0.5);
-        break;
-      case 54:
-        api.seekTo(api.getDuration()*0.6);
-        break;
-      case 55:
-        api.seekTo(api.getDuration()*0.7);
-        break;
-      case 56:
-        api.seekTo(api.getDuration()*0.8);
-        break;
-      case 57:
-        api.seekTo(api.getDuration()*0.9);
-        break;
-      // Space
-      // K
-      case 32:
-      case 75:
-        var playing = api.getPreferredPlaybackState() === PlaybackState.PLAYING;
-        if (playing) {
-          this._playSvgBezel(ICON_PAUSE);
-          api.pauseVideo();
-        } else {
-          this._playSvgBezel(ICON_PLAY);
-          api.playVideo();
-        }
-        break;
-      // End
-      case 35:
-        api.seekTo(api.getDuration());
-        break;
-      // Home
-      // 0
-      case 36:
-      case 48:
-        api.seekTo(0);
-        break;
-      // Left arrow
-      case 37:
-        this._playSvgBezel(ICON_SEEK_BACK_5);
-        api.seekTo(Math.max(api.getCurrentTime() - 5, 0));
-        break;
-      // Up arrow
-      case 38:
-        this._playSvgBezel(ICON_VOLUME + " " + ICON_VOLUME_HIGH);
-        api.setVolume(Math.min(api.getVolume() + 5/100, 1));
-        break;
-      // Right arrow
-      case 39:
-        this._playSvgBezel(ICON_SEEK_FORWARD_5);
-        api.seekTo(Math.min(api.getCurrentTime() + 5, api.getDuration()));
-        break;
-      // Down arrow
-      case 40:
-        this._playSvgBezel(ICON_VOLUME);
-        api.setVolume(Math.max(api.getVolume() - 5/100, 0));
-        break;
-      // F
-      case 70:
-        api.toggleFullscreen();
-        break;
-      // J
-      case 74:
-        this._playSvgBezel(ICON_SEEK_BACK_10);
-        api.seekTo(Math.max(api.getCurrentTime() - 10, 0));
-        break;
-      // L
-      case 76:
-        this._playSvgBezel(ICON_SEEK_FORWARD_10);
-        api.seekTo(Math.min(api.getCurrentTime() + 10, api.getDuration()));
-        break;
-      // M
-      case 77:
-        if (!api.isMuted()) {
-          this._playSvgBezel(ICON_VOLUME_MUTE);
-          api.mute();
-        } else {
-          this._playSvgBezel(ICON_VOLUME + " " + ICON_VOLUME_HIGH);
-          api.unmute();
-        }
-        break;
-      // N
-      case 78:
-        if (e.shiftKey) {
-          api.playNextVideo();
-          break;
-        }
-      // S
-      case 83:
-        this._playSvgBezel(ICON_SEEK_FORWARD);
-        api.seekTo(Math.min(api.getCurrentTime() + 85, api.getDuration()));
-        break;
-      // ,
-      case 188:
-        break;
-      // .
-      case 190:
-        break;
-      default:
-        return;
-    }
-    e.preventDefault();
-  }
-
-  private _onDocumentKeyDown(e: BrowserEvent) {
-    const element = e.target as HTMLElement;
-    if (element) {
-      if (element.tagName === 'INPUT' || element.tagName === 'SELECT' || element.tagName === 'TEXTAREA' || element.isContentEditable)
-        return;
-      if (this.base.contains(element))
-        return;
-    }
-
-    const api = this.getApi();
-    switch (e.keyCode) {
-      // F
-      case 70:
-        api.toggleFullscreen();
-        break;
-      // K
-      case 75:
-        var playing = api.getPreferredPlaybackState() === PlaybackState.PLAYING;
-        if (playing) {
-          this._playSvgBezel(ICON_PAUSE);
-          api.pauseVideo();
-        } else {
-          this._playSvgBezel(ICON_PLAY);
-          api.playVideo();
-        }
-        break;
-      default:
-        return;
-    }
-    e.preventDefault();
-  }
-
-  private _onPlaybackStateChange() {
-    const state = this._api.getPlaybackState();
-    if (state === PlaybackState.PLAYING) {
-      this.setAutoHide(this._autoHide);
-    } else {
-      this.updateInternalAutoHide();
-    }
-
-    const unstarted = this.base.classList.contains('unstarted-mode');
-
-    this.base.classList.remove("playing-mode", "ended-mode", "unstarted-mode");
-    switch (state) {
-      case PlaybackState.PLAYING:
-        this.base.classList.add("playing-mode");
-        break;
-      case PlaybackState.PAUSED:
-        this.base.classList.add("paused-mode");
-        break;
-      case PlaybackState.UNSTARTED:
-        this.base.classList.add("unstarted-mode");
-        break;
-    }
-
-    if (unstarted) {
+    if (requireResizeCalculations) {
       this.resize();
     }
   }
 
-  isBigMode(): boolean {
+  public getApi(): IPlayerApi {
+    return this._api;
+  }
+
+  public isBigMode(): boolean {
     return this._bigMode;
   }
 
-  setBigMode(bigMode: boolean): void {
+  public setBigMode(bigMode: boolean): void {
+    if (!this.base) throw new Error('Player base is undefined');
     this._bigMode = bigMode;
     if (this._bigMode) {
-      this.base.classList.add("chrome-big-mode");
+      this.base.classList.add('chrome-big-mode');
     } else {
-      this.base.classList.remove("chrome-big-mode");
+      this.base.classList.remove('chrome-big-mode');
     }
 
     this.resize();
   }
 
-  private _onFullscreenChange() {
-    const fullscreen = this._api.isFullscreen();
-    this.setBigMode(fullscreen);
-    if (fullscreen) {
-      this.base.classList.add("html5-video-player--fullscreen");
-    } else {
-      this.base.classList.remove("html5-video-player--fullscreen");
-    }
-    this._tooltipComponent.base.style.display = "none";
+  public resize() {
+    if (!this._chromelessPlayer)
+      throw new Error('ChromelessPlayer is undefined');
+    if (!this._bottomComponent) throw new Error('BottomComponent is undefined');
+    if (!this.base) throw new Error('Player base is undefined');
+    if (!this._bottomComponent.base)
+      throw new Error('BottomComponent base is undefined');
 
-    this.resize();
-  }
-
-  private _setTooltip(tooltip: IChromeTooltip, left: number) {
-    if (this.isPreview()) {
-      this._tooltipComponent.base.style.display = "none";
-      return;
-    }
-    this._tooltipComponent.setTooltip(tooltip);
-    this._tooltipComponent.setPosition(0, 0);
-
-    const rect = this._tooltipBottomRect;
-    const size = this._tooltipComponent.getSize();
-
-    left = left - size.width/2;
-    left = Math.min(Math.max(left, rect.left), rect.left + rect.width - size.width);
-
-    this._tooltipComponent.setPosition(left, rect.top - size.height);
-  }
-
-  private _onProgressHover(time: number, percentage: number) {
-    this.base.classList.add('chrome-progress-bar-hover');
-
-    const rect = this._tooltipBottomRect;
-    this._setTooltip({
-      text: parseAndFormatTime(time)
-    }, rect.width*percentage + rect.left);
-  }
-
-  private _onProgressEndHover() {
-    this.base.classList.remove('chrome-progress-bar-hover');
-    this._tooltipComponent.base.style.display = "none";
-  }
-  
-  private _onNextVideoHover(detail: IVideoDetail) {
-    const bigMode = this.isBigMode();
-    const tooltip: IChromeTooltip = {
-      textDetail: true,
-      preview: true,
-      title: 'Next',
-      text: detail.title,
-      backgroundImage: {
-        width: bigMode ? 240 : 160,
-        height: bigMode ? 135 : 90,
-        src: detail.thumbnailUrl
-      }
-    };
-    if (typeof detail.duration === 'number' && isFinite(detail.duration)) {
-      tooltip.duration = parseAndFormatTime(detail.duration);
-    }
-    const btnRect = this._nextVideoButtonRect;
-    this._setTooltip(tooltip, btnRect.left + btnRect.width/2);
-  }
-  
-  private _onNextVideoEndHover() {
-    this._tooltipComponent.base.style.display = "none";
-  }
-  
-  private _onSizeButtonHover() {
-    const btnRect = this._sizeButtonRect;
-    this._setTooltip({
-      text: this._api.isLarge() ? 'Small' : 'Large'
-    }, btnRect.left + btnRect.width/2);
-  }
-  
-  private _onSizeButtonEndHover() {
-    this._tooltipComponent.base.style.display = "none";
-  }
-  
-  private _onFullscreenButtonHover() {
-    const btnRect = this._fullscreenButtonRect;
-    this._setTooltip({
-      text: this._api.isFullscreen() ? 'Exit full screen' : 'Full screen'
-    }, btnRect.left + btnRect.width/2);
-  }
-  
-  private _onFullscreenButtonEndHover() {
-    this._tooltipComponent.base.style.display = "none";
-  }
-  
-  private _onVolumeMuteButtonHover() {
-    const btnRect = this._volumeMuteButtonRect;
-    this._setTooltip({
-      text: (this._api.isMuted() || this._api.getVolume() === 0) ? 'Unmute' : 'Mute'
-    }, btnRect.left + btnRect.width/2);
-  }
-  
-  private _onVolumeMuteButtonEndHover() {
-    this._tooltipComponent.base.style.display = "none";
-  }
-
-  private _onActionMouseDown(e: BrowserEvent) {
-    e.preventDefault();
-  }
-  
-  private _onActionClick(e: BrowserEvent) {
-    this.base.focus();
-    
-    if (typeof this._actionClickTimer === "number") {
-      window.clearTimeout(this._actionClickTimer);
-      this._actionClickTimer = undefined;
-
-      return;
-    }
-
-    const api = this._api;
-    const playing = api.getPreferredPlaybackState() === PlaybackState.PLAYING;
-
-    if (playing) {
-      this._playSvgBezel(ICON_PAUSE);
-    } else {
-      this._playSvgBezel(ICON_PLAY);
-    }
-
-    this._actionClickExecuted = false;
-    this._actionClickTimer = window.setTimeout(() => {
-      this._actionClickTimer = undefined;
-      this._actionClickExecuted = true;
-
-      const playing = api.getPreferredPlaybackState() === PlaybackState.PLAYING;
-      if (playing) {
-        api.pauseVideo();
-      } else {
-        api.playVideo();
-      }
-    }, 200);
-  }
-  
-  private _onActionDoubleClick(e: BrowserEvent) {
-    this._bezelElement.stop();
-    const api = this._api;
-    if (this._actionClickExecuted) {
-      this._actionClickExecuted = false;
-      
-      const playing = api.getPreferredPlaybackState() === PlaybackState.PLAYING;
-      if (playing) {
-        api.pauseVideo();
-      } else {
-        api.playVideo();
-      }
-    }
-
-    api.toggleFullscreen();
-  }
-  
-  private _onMouseDown() {
-    this._mouseDown = true;
-  }
-  
-  private _onMouseUp() {
-    this._mouseDown = false;
-
-    this.updateInternalAutoHide();
-  }
-
-  private _onLoadedMetadata() {
-    this.setPreview(false);
-  }
-
-  resize() {
     this._chromelessPlayer.resize();
 
     const rect = this.base.getBoundingClientRect();
 
+    this.setState({
+      maxPopupHeight:
+        rect.height - 49 /* from css: .html5-video-gradient-bottom */ - 12
+    });
+
     const bottomRect = this._bottomComponent.base
-      .querySelector(".chrome-progress-bar-padding")!.getBoundingClientRect();
+      .querySelector('.chrome-progress-bar-padding')!
+      .getBoundingClientRect();
     const nextVideoRect = this._bottomComponent.base
-      .querySelector(".chrome-next-button")!.getBoundingClientRect();
+      .querySelector('.chrome-next-button')!
+      .getBoundingClientRect();
     const sizeButtonRect = this._bottomComponent.base
-      .querySelector(".chrome-size-button")!.getBoundingClientRect();
+      .querySelector('.chrome-size-button')!
+      .getBoundingClientRect();
     const fullscreenButtonRect = this._bottomComponent.base
-      .querySelector(".chrome-fullscreen-button")!.getBoundingClientRect();
+      .querySelector('.chrome-fullscreen-button')!
+      .getBoundingClientRect();
     const volumeMuteButtonRect = this._bottomComponent.base
-      .querySelector(".chrome-mute-button")!.getBoundingClientRect();
+      .querySelector('.chrome-mute-button')!
+      .getBoundingClientRect();
+    const settingsMuteButtonRect = this._bottomComponent.base
+      .querySelector('.chrome-settings-button')!
+      .getBoundingClientRect();
 
     this._tooltipBottomRect = {
       width: bottomRect.width,
@@ -670,9 +401,18 @@ export class Player extends Component<IPlayerProps, {}> {
       left: volumeMuteButtonRect.left - rect.left,
       top: volumeMuteButtonRect.top - rect.top
     };
+    this._settingsButtonRect = {
+      width: settingsMuteButtonRect.width,
+      height: settingsMuteButtonRect.height,
+      left: settingsMuteButtonRect.left - rect.left,
+      top: settingsMuteButtonRect.top - rect.top
+    };
   }
 
-  componentDidMount() {
+  public componentDidMount() {
+    if (!this._actionElement) throw new Error('ActionElement is undefined');
+    if (!this.base) throw new Error('Player base is undefined');
+
     if (this._chromelessPlayer) {
       this._chromelessPlayer.setFullscreenElement(this.base);
     }
@@ -689,38 +429,49 @@ export class Player extends Component<IPlayerProps, {}> {
       .listen(this.base, 'mouseenter', this._onMouseMouse, false)
       .listen(this.base, 'mousemove', this._onMouseMouse, false)
       .listen(this.base, 'mouseleave', this._onMouseLeave, false)
-      .listen(this.base, 'keydown', this._onKeyDown, false)
-      .listen(document, 'keydown', this._onDocumentKeyDown, false)
       .listen(this._actionElement, 'mousedown', this._onActionMouseDown, false)
       .listen(this._actionElement, 'click', this._onActionClick, false)
       .listen(this._actionElement, 'dblclick', this._onActionDoubleClick, false)
-      .listen(this._api, 'playbackstatechange', this._onPlaybackStateChange, false)
+      .listen(
+        this._api,
+        'playbackstatechange',
+        this._onPlaybackStateChange,
+        false
+      )
       .listen(this._api, 'fullscreenchange', this._onFullscreenChange, false)
       .listen(this._api, 'sizechange', this._onSizeChange, false)
       .listen(this._api, 'loadedmetadata', this._onLoadedMetadata, false)
-      .listen(window, "resize", this.resize, { 'passive': true });
+      .listen(this._api, 'settingsopen', this._onSettingsOpen, false)
+      .listen(window, 'resize', this.resize, { passive: true });
   }
 
-  componentWillUnmount() {
+  public componentWillUnmount() {
     this._handler.removeAll();
   }
 
-  render(): JSX.Element {
+  public render(
+    {  }: IPlayerProps,
+    { maxPopupHeight }: IPlayerState
+  ): JSX.Element {
     const chromelessRef = (el: ChromelessPlayer) => {
       this._chromelessPlayer = el;
       if (this.base) {
         this._chromelessPlayer.setFullscreenElement(this.base);
       }
     };
-    const bottomRef = (el: ChromeBottomComponent) => this._bottomComponent = el;
-    const cuedThumbnailRef = (el: CuedThumbnailComponent) => this._cuedThumbnailComponent = el;
-    const tooltipRef = (el: ChromeTooltip) => this._tooltipComponent = el;
-    const actionRef = (el: HTMLElement) => this._actionElement = el;
-    const bezelRef = (el: BezelComponent) => this._bezelElement = el;
+    const bottomRef = (el: ChromeBottomComponent) =>
+      (this._bottomComponent = el);
+    const cuedThumbnailRef = (el: CuedThumbnailComponent) =>
+      (this._cuedThumbnailComponent = el);
+    const tooltipRef = (el: ChromeTooltip) => (this._tooltipComponent = el);
+    const actionRef = (el?: Element) => (this._actionElement = el);
+    const bezelRef = (el: BezelComponent) => (this._bezelElement = el);
 
-    const onProgressHover = (time: number, percentage: number) => this._onProgressHover(time, percentage);
+    const onProgressHover = (time: number, percentage: number) =>
+      this._onProgressHover(time, percentage);
     const onProgressEndHover = () => this._onProgressEndHover();
-    const onNextVideoHover = (detail: IVideoDetail) => this._onNextVideoHover(detail);
+    const onNextVideoHover = (detail: IVideoDetail) =>
+      this._onNextVideoHover(detail);
     const onNextVideoEndHover = () => this._onNextVideoEndHover();
     const onSizeButtonHover = () => this._onSizeButtonHover();
     const onSizeButtonEndHover = () => this._onSizeButtonEndHover();
@@ -728,7 +479,11 @@ export class Player extends Component<IPlayerProps, {}> {
     const onFullscreenButtonEndHover = () => this._onFullscreenButtonEndHover();
     const onVolumeMuteButtonHover = () => this._onVolumeMuteButtonHover();
     const onVolumeMuteButtonEndHover = () => this._onVolumeMuteButtonEndHover();
+    const onSettingsButtonHover = () => this._onSettingsButtonHover();
+    const onSettingsButtonEndHover = () => this._onSettingsButtonEndHover();
     const onCuedThumbnailClick = () => {
+      if (!this._cuedThumbnailComponent)
+        throw new Error('CuedThumbnailComponent is undefined');
       if (this._config && this._configCued) {
         this._updateChromelessPlayer(this._config);
 
@@ -742,31 +497,43 @@ export class Player extends Component<IPlayerProps, {}> {
     };
 
     const attributes = {
-      'tabindex': '0'
+      tabindex: '0'
     };
 
-    let autoplay = true;
-    if (this.props.config && typeof this.props.config.autoplay === 'boolean') {
-      autoplay = this.props.config.autoplay;
+    let className =
+      'html5-video-player' +
+      ' ' +
+      this._getStateClassName() +
+      (this._api.isLarge() ? ' html5-video-player--large' : '');
+
+    if (this._bigMode) {
+      className += ' chrome-big-mode';
     }
 
-    const className = "html5-video-player unstarted-mode"
-      + (this._api.isLarge() ? " html5-video-player--large" : "");
+    if (this._api.isFullscreen()) {
+      className += ' html5-video-player--fullscreen';
+    }
+
+    if (this._preview) {
+      className += ' html5-video-player--preview';
+    }
+
     return (
       <div class={className} {...attributes}>
         <ChromelessPlayer
           ref={chromelessRef}
-          api={this.getApi() as ChromelessPlayerApi}></ChromelessPlayer>
+          api={this.getApi() as ChromelessPlayerApi}
+        />
         <CuedThumbnailComponent
           ref={cuedThumbnailRef}
-          onClick={onCuedThumbnailClick}></CuedThumbnailComponent>
-        <BufferComponent api={this.getApi()}></BufferComponent>
-        <BezelComponent ref={bezelRef}></BezelComponent>
-        <div
-          ref={actionRef}
-          class="html5-video-action"></div>
-        <ChromeTooltip ref={tooltipRef}></ChromeTooltip>
-        <div class="html5-video-gradient-bottom"></div>
+          onClick={onCuedThumbnailClick}
+        />
+        <BufferComponent api={this.getApi()} />
+        <BezelComponent ref={bezelRef} />
+        <div ref={actionRef} class="html5-video-action" />
+        <ChromeTooltip ref={tooltipRef} />
+        <ChromeSettingsPopup api={this.getApi()} maxHeight={maxPopupHeight} />
+        <div class="html5-video-gradient-bottom" />
         <ChromeBottomComponent
           ref={bottomRef}
           api={this.getApi()}
@@ -780,8 +547,457 @@ export class Player extends Component<IPlayerProps, {}> {
           onFullscreenButtonHover={onFullscreenButtonHover}
           onFullscreenButtonEndHover={onFullscreenButtonEndHover}
           onVolumeMuteButtonHover={onVolumeMuteButtonHover}
-          onVolumeMuteButtonEndHover={onVolumeMuteButtonEndHover}></ChromeBottomComponent>
+          onVolumeMuteButtonEndHover={onVolumeMuteButtonEndHover}
+          onSettingsButtonHover={onSettingsButtonHover}
+          onSettingsButtonEndHover={onSettingsButtonEndHover}
+        />
       </div>
     );
+  }
+
+  private async _updateChromelessPlayer(config: IPlayerConfig) {
+    if (!this._chromelessPlayer)
+      throw new Error('ChromelessPlayer is undefined');
+
+    this._configCued = false;
+    let defaultTrack: number = -1;
+    if (config.subtitles) {
+      const tracks: ISubtitleTrack[] = [];
+      const queries = parseSimpleQuery(location.search);
+
+      for (let i = 0; i < config.subtitles.length; i++) {
+        let useSubtitle = false;
+        if (queries.hasOwnProperty('ssid')) {
+          const id = queries.ssid;
+          const sId = config.subtitles[i].getId();
+          if (sId === undefined) {
+            useSubtitle = config.subtitles[i].isDefault();
+          } else {
+            useSubtitle = sId.toString() === id;
+          }
+        } else {
+          useSubtitle = config.subtitles[i].isDefault();
+        }
+        if (useSubtitle) {
+          defaultTrack = i;
+        }
+
+        const subtitle = config.subtitles[i];
+        tracks.push({
+          label: subtitle.getTitle(),
+          getFile: (): string | undefined => subtitle.getFile(),
+          getContent: async (): Promise<string | undefined> => {
+            return await subtitle.getContentAsAss();
+          }
+        });
+      }
+      this._chromelessPlayer.setSubtitleTracks(tracks);
+      this._chromelessPlayer.setSubtitleTrack(defaultTrack);
+    }
+
+    if (config.volume !== undefined) {
+      this._chromelessPlayer.setVolume(config.volume);
+    }
+
+    if (config.muted !== undefined) {
+      this._chromelessPlayer.setMuted(config.muted);
+    }
+
+    let url = config.url;
+
+    if (defaultTrack !== -1 && config.subtitles) {
+      const subtitle = config.subtitles[defaultTrack];
+      url = subtitle.getFile() || url;
+    }
+
+    if (url) {
+      const hls = new HlsSource(this.getApi(), url, config.quality);
+      const resolver = container.get<IQualityResolver>(IQualityResolverSymbol);
+      resolver.bind(this._chromelessPlayer, hls);
+
+      this._chromelessPlayer.setVideoSource(hls, config.startTime);
+    } else {
+      this._chromelessPlayer.removeVideoSource();
+    }
+
+    if (typeof config.duration === 'number') {
+      this._chromelessPlayer.setDuration(config.duration);
+    } else {
+      this._chromelessPlayer.setDuration(NaN);
+    }
+  }
+
+  private _onSizeChange(): void {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this.base) throw new Error('Player base is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+
+    const large = this._api.isLarge();
+    if (large) {
+      this.base.classList.add('html5-video-player--large');
+    } else {
+      this.base.classList.remove('html5-video-player--large');
+    }
+
+    if (this.props.onSizeChange) {
+      this.props.onSizeChange(large);
+    }
+
+    this._tooltipComponent.base.style.display = 'none';
+
+    this.resize();
+  }
+
+  private _onMouseMouse(e: BrowserEvent) {
+    if (!this._bottomComponent) throw new Error('BottomComponent is undefined');
+
+    window.clearTimeout(this._autoHideTimer);
+    this.setAutoHide(false);
+
+    const el = this._bottomComponent.base;
+    if (!el) throw new Error('BottomComponent base is undefined');
+
+    if (e.target !== el && !el.contains(e.target as Node)) {
+      this._autoHideTimer = window.setTimeout(
+        () => this.setAutoHide(true),
+        this._autoHideMoveDelay
+      );
+    }
+  }
+
+  private _onMouseLeave(e: BrowserEvent) {
+    window.clearTimeout(this._autoHideTimer);
+    this._autoHideTimer = window.setTimeout(
+      () => this.setAutoHide(true),
+      this._autoHideDelay
+    );
+  }
+
+  private _playSvgBezel(d: string): void {
+    if (!this._bezelElement) throw new Error('Bezel element is undefined');
+
+    this._bezelElement.playSvgPath(d);
+  }
+
+  private _getStateClassName(): string {
+    try {
+      const state = this._api.getPlaybackState();
+      switch (state) {
+        case PlaybackState.PLAYING:
+        case PlaybackState.BUFFERING:
+          return 'playing-mode';
+        case PlaybackState.PAUSED:
+          return 'paused-mode';
+        case PlaybackState.ENDED:
+          return 'ended-mode';
+        case PlaybackState.UNSTARTED:
+        default:
+          return 'unstarted-mode';
+      }
+    } catch (e) {
+      return 'unstarted-mode';
+    }
+  }
+
+  private _onPlaybackStateChange() {
+    if (!this.base) throw new Error('Player base is undefined');
+    const state = this._api.getPlaybackState();
+    if (state === PlaybackState.PLAYING) {
+      this.setAutoHide(this._autoHide);
+    } else {
+      this.updateInternalAutoHide();
+    }
+
+    const unstarted = this.base.classList.contains('unstarted-mode');
+
+    this.base.classList.remove(
+      'playing-mode',
+      'paused-mode',
+      'ended-mode',
+      'unstarted-mode'
+    );
+    this.base.classList.add(this._getStateClassName());
+
+    if (unstarted) {
+      this.resize();
+    }
+  }
+
+  private _onFullscreenChange() {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this.base) throw new Error('Player base is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+
+    const fullscreen = this._api.isFullscreen();
+    this.setBigMode(fullscreen);
+    if (fullscreen) {
+      this.base.classList.add('html5-video-player--fullscreen');
+    } else {
+      this.base.classList.remove('html5-video-player--fullscreen');
+    }
+    this._tooltipComponent.base.style.display = 'none';
+
+    this.resize();
+  }
+
+  private _setTooltip(tooltip: IChromeTooltip, left: number) {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this._tooltipBottomRect)
+      throw new Error('Tooltip bottom rect is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+
+    if (this.isPreview()) {
+      this._tooltipComponent.base.style.display = 'none';
+      return;
+    }
+    this._tooltipComponent.setTooltip(tooltip);
+    this._tooltipComponent.setPosition(0, 0);
+
+    const rect = this._tooltipBottomRect;
+    const size = this._tooltipComponent.getSize();
+
+    left = left - size.width / 2;
+    left = Math.min(
+      Math.max(left, rect.left),
+      rect.left + rect.width - size.width
+    );
+
+    this._tooltipComponent.setPosition(left, rect.top - size.height);
+  }
+
+  private _onProgressHover(time: number, percentage: number) {
+    if (!this._tooltipBottomRect)
+      throw new Error('TooltipBottomRect is undefined');
+    if (!this.base) throw new Error('Player base is undefined');
+
+    this.base.classList.add('chrome-progress-bar-hover');
+
+    const rect = this._tooltipBottomRect;
+    this._setTooltip(
+      {
+        text: parseAndFormatTime(time)
+      },
+      rect.width * percentage + rect.left
+    );
+  }
+
+  private _onProgressEndHover() {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+    if (!this.base) throw new Error('Player base is undefined');
+
+    this.base.classList.remove('chrome-progress-bar-hover');
+    this._tooltipComponent.base.style.display = 'none';
+  }
+
+  private _onNextVideoHover(detail: IVideoDetail) {
+    if (!this._nextVideoButtonRect)
+      throw new Error('NextVideoButtonRect is undefined');
+
+    const bigMode = this.isBigMode();
+    const tooltip: IChromeTooltip = {
+      textDetail: true,
+      preview: true,
+      title: 'Next',
+      text: detail.title,
+      backgroundImage: {
+        width: bigMode ? 240 : 160,
+        height: bigMode ? 135 : 90,
+        src: detail.thumbnailUrl
+      }
+    };
+    if (typeof detail.duration === 'number' && isFinite(detail.duration)) {
+      tooltip.duration = parseAndFormatTime(detail.duration);
+    }
+    const btnRect = this._nextVideoButtonRect;
+    this._setTooltip(tooltip, btnRect.left + btnRect.width / 2);
+  }
+
+  private _onNextVideoEndHover() {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+
+    this._tooltipComponent.base.style.display = 'none';
+  }
+
+  private _onSizeButtonHover() {
+    if (!this._sizeButtonRect) throw new Error('SizeButtonRect is undefined');
+
+    const btnRect = this._sizeButtonRect;
+    this._setTooltip(
+      {
+        text: this._api.isLarge() ? 'Small' : 'Large'
+      },
+      btnRect.left + btnRect.width / 2
+    );
+  }
+
+  private _onSizeButtonEndHover() {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+
+    this._tooltipComponent.base.style.display = 'none';
+  }
+
+  private _onFullscreenButtonHover() {
+    if (!this._fullscreenButtonRect)
+      throw new Error('FullscreenButtonRect is undefined');
+
+    const btnRect = this._fullscreenButtonRect;
+    this._setTooltip(
+      {
+        text: this._api.isFullscreen() ? 'Exit full screen' : 'Full screen'
+      },
+      btnRect.left + btnRect.width / 2
+    );
+  }
+
+  private _onFullscreenButtonEndHover() {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+
+    this._tooltipComponent.base.style.display = 'none';
+  }
+
+  private _onVolumeMuteButtonHover() {
+    if (!this._volumeMuteButtonRect)
+      throw new Error('VolumeMuteButtonRect is undefined');
+
+    const btnRect = this._volumeMuteButtonRect;
+    this._setTooltip(
+      {
+        text:
+          this._api.isMuted() || this._api.getVolume() === 0 ? 'Unmute' : 'Mute'
+      },
+      btnRect.left + btnRect.width / 2
+    );
+  }
+
+  private _onVolumeMuteButtonEndHover() {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+
+    this._tooltipComponent.base.style.display = 'none';
+  }
+
+  private _onSettingsButtonHover() {
+    if (this._api.isSettingsOpen()) return;
+    if (!this._settingsButtonRect)
+      throw new Error('SettingsButtonRect is undefined');
+
+    const btnRect = this._settingsButtonRect;
+    this._setTooltip(
+      {
+        text: 'Settings'
+      },
+      btnRect.left + btnRect.width / 2
+    );
+  }
+
+  private _onSettingsButtonEndHover() {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+
+    this._tooltipComponent.base.style.display = 'none';
+  }
+
+  private _onSettingsOpen() {
+    if (!this._tooltipComponent)
+      throw new Error('TooltipComponent is undefined');
+    if (!this._tooltipComponent.base)
+      throw new Error('TooltipComponent base is undefined');
+    if (this._tooltipComponent) {
+      this._tooltipComponent.base.style.display = 'none';
+    }
+  }
+
+  private _onActionMouseDown(e: BrowserEvent) {
+    e.preventDefault();
+  }
+
+  private _onActionClick(e: BrowserEvent) {
+    if (!this.base) throw new Error('Player base is undefined');
+    this.base.focus();
+
+    if (typeof this._actionClickTimer === 'number') {
+      window.clearTimeout(this._actionClickTimer);
+      this._actionClickTimer = undefined;
+
+      return;
+    }
+
+    const api = this._api;
+    const playing = api.getPreferredPlaybackState() === PlaybackState.PLAYING;
+
+    if (playing) {
+      this._playSvgBezel(ICON_PAUSE);
+    } else {
+      this._playSvgBezel(ICON_PLAY);
+    }
+
+    this._actionClickExecuted = false;
+    this._actionClickTimer = window.setTimeout(() => {
+      this._actionClickTimer = undefined;
+      this._actionClickExecuted = true;
+
+      const isPlaying =
+        api.getPreferredPlaybackState() === PlaybackState.PLAYING;
+      if (isPlaying) {
+        api.pauseVideo();
+      } else {
+        api.playVideo();
+      }
+    }, 200);
+  }
+
+  private _onActionDoubleClick(e: BrowserEvent) {
+    if (!this._bezelElement) throw new Error('BezelELement is undefined');
+
+    this._bezelElement.stop();
+    const api = this._api;
+    if (this._actionClickExecuted) {
+      this._actionClickExecuted = false;
+
+      const playing = api.getPreferredPlaybackState() === PlaybackState.PLAYING;
+      if (playing) {
+        api.pauseVideo();
+      } else {
+        api.playVideo();
+      }
+    }
+
+    api.toggleFullscreen();
+  }
+
+  private _onMouseDown() {
+    this._mouseDown = true;
+  }
+
+  private _onMouseUp() {
+    this._mouseDown = false;
+
+    this.updateInternalAutoHide();
+  }
+
+  private _onLoadedMetadata() {
+    this.setPreview(false);
   }
 }

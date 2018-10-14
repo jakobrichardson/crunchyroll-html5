@@ -1,42 +1,5 @@
-import { ISubtitleTrack } from "../subtitles/ISubtitleTrack";
 import { EventTarget } from '../../libs/events/EventTarget';
-import { Event } from '../../libs/events/Event';
-
-export class PlaybackStateChangeEvent extends Event {
-  constructor(public state: PlaybackState) {
-    super('playbackstatechange');
-  }
-}
-
-export class SeekEvent extends Event {
-  constructor(public time: number) {
-    super('seek');
-  }
-}
-
-export class TimeUpdateEvent extends Event {
-  constructor(public time: number) {
-    super('timeupdate');
-  }
-}
-
-export class DurationChangeEvent extends Event {
-  constructor(public duration: number) {
-    super('durationchange');
-  }
-}
-
-export class VolumeChangeEvent extends Event {
-  constructor(public volume: number, public muted: boolean) {
-    super('volumechange');
-  }
-}
-
-export class NextVideoEvent extends Event {
-  constructor(public detail: IVideoDetail) {
-    super('nextvideo');
-  }
-}
+import { ISubtitleTrack } from '../subtitles/ISubtitleTrack';
 
 export enum PlaybackState {
   UNSTARTED,
@@ -67,7 +30,7 @@ export interface IPlayerApi extends EventTarget {
   seekTo(time: number): void;
   seekBy(seconds: number): void;
   playNextVideo(): void;
-  
+
   getDuration(): number;
   getCurrentTime(): number;
   getBufferedTime(): number;
@@ -87,6 +50,8 @@ export interface IPlayerApi extends EventTarget {
 
   getSubtitlesTracks(): ISubtitleTrack[];
   setSubtitleTracks(tracks: ISubtitleTrack[]): void;
+  getSubtitleTrack(): number;
+
   /**
    * Set the subtitle track by its index.
    * If set to -1 it will not display subtitles.
@@ -94,6 +59,16 @@ export interface IPlayerApi extends EventTarget {
    */
   setSubtitleTrack(index: number): void;
 
-  getNextVideoDetail(): IVideoDetail|undefined;
-  setNextVideoDetail(nextVideo: IVideoDetail|undefined): void;
+  getNextVideoDetail(): IVideoDetail | undefined;
+  setNextVideoDetail(nextVideo: IVideoDetail | undefined): void;
+
+  isSettingsOpen(): boolean;
+  openSettings(): void;
+  closeSettings(): void;
+
+  isAutoPlay(): boolean;
+  setAutoPlay(autoPlay: boolean): void;
+
+  getPlaybackRate(): number;
+  setPlaybackRate(rate: number): void;
 }

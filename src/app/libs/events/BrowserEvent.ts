@@ -1,33 +1,33 @@
+import { isMac } from '../platform/navigator';
 import { Event as MyEvent } from './Event';
 import { MouseButton } from './MouseButton';
-import { isMac } from '../platform/navigator';
 
-declare interface _KeyboardEvent extends Event {
+declare interface ISpecialKeyboardEvent extends Event {
   keyCode: number;
   ctrlKey: boolean;
 }
 
 export class BrowserEvent extends MyEvent {
-  relatedTarget: EventTarget|null = null;
-  offsetX: number = 0;
-  offsetY: number = 0;
-  clientX: number = 0;
-  clientY: number = 0;
-  screenX: number = 0;
-  screenY: number = 0;
-  button: MouseButton = MouseButton.LEFT;
-  key: string = '';
-  keyCode: number = 0;
-  charCode: number = 0;
-  ctrlKey: boolean = false;
-  altKey: boolean = false;
-  shiftKey: boolean = false;
-  metaKey: boolean = false;
-  state: Object|null = null;
-  platformModifierKey: boolean = false;
-  detail: any = undefined;
+  public relatedTarget: EventTarget | null = null;
+  public offsetX: number = 0;
+  public offsetY: number = 0;
+  public clientX: number = 0;
+  public clientY: number = 0;
+  public screenX: number = 0;
+  public screenY: number = 0;
+  public button: MouseButton = MouseButton.LEFT;
+  public key: string = '';
+  public keyCode: number = 0;
+  public charCode: number = 0;
+  public ctrlKey: boolean = false;
+  public altKey: boolean = false;
+  public shiftKey: boolean = false;
+  public metaKey: boolean = false;
+  public state: object | null = null;
+  public platformModifierKey: boolean = false;
+  public detail: any = undefined;
 
-  private _event: Event;
+  private _event?: Event;
 
   constructor(event?: Event, currentTarget?: EventTarget) {
     super(event ? event.type : '');
@@ -37,63 +37,81 @@ export class BrowserEvent extends MyEvent {
     }
   }
 
-  init(event: Event, currentTarget?: EventTarget) {
-    let type = this.type = event.type;
-  
+  public init(event: Event, currentTarget?: EventTarget) {
+    const type = (this.type = event.type);
+
     /**
      * On touch devices use the first "changed touch" as the relevant touch.
      */
-    let touchEvent = event as TouchEvent;
-    let relevantTouch: Touch|undefined = (touchEvent.changedTouches ? touchEvent.changedTouches[0] : undefined);
-    
-    this.target = event.target || event.srcElement;
-  
+    const touchEvent = event as TouchEvent;
+    const relevantTouch: Touch | undefined = touchEvent.changedTouches
+      ? touchEvent.changedTouches[0]
+      : undefined;
+
+    this.target = event.target || event.srcElement || undefined;
+
     this.currentTarget = currentTarget;
-  
-    let mouseEvent = event as MouseEvent;
+
+    const mouseEvent = event as MouseEvent;
     let relatedTarget = mouseEvent.relatedTarget;
     if (relatedTarget) {
-      
     } else if (type === 'mouseover') {
       relatedTarget = mouseEvent.fromElement;
     } else if (type === 'mouseout') {
       relatedTarget = mouseEvent.toElement;
     }
-  
+
     this.relatedTarget = relatedTarget;
-  
+
     if (!!relevantTouch) {
-      this.clientX = relevantTouch.clientX !== undefined ? relevantTouch.clientX :
-                                                            relevantTouch.pageX;
-      this.clientY = relevantTouch.clientY !== undefined ? relevantTouch.clientY :
-                                                            relevantTouch.pageY;
+      this.clientX =
+        relevantTouch.clientX !== undefined
+          ? relevantTouch.clientX
+          : relevantTouch.pageX;
+      this.clientY =
+        relevantTouch.clientY !== undefined
+          ? relevantTouch.clientY
+          : relevantTouch.pageY;
       this.screenX = relevantTouch.screenX || 0;
       this.screenY = relevantTouch.screenY || 0;
     } else {
-      this.offsetX = mouseEvent.offsetX !== undefined ? mouseEvent.offsetX : mouseEvent.layerX;
-      this.offsetY = mouseEvent.offsetY !== undefined ? mouseEvent.offsetY : mouseEvent.layerY;
-      this.clientX = mouseEvent.clientX !== undefined ? mouseEvent.clientX : mouseEvent.pageX;
-      this.clientY = mouseEvent.clientY !== undefined ? mouseEvent.clientY : mouseEvent.pageY;
+      this.offsetX =
+        mouseEvent.offsetX !== undefined
+          ? mouseEvent.offsetX
+          : mouseEvent.layerX;
+      this.offsetY =
+        mouseEvent.offsetY !== undefined
+          ? mouseEvent.offsetY
+          : mouseEvent.layerY;
+      this.clientX =
+        mouseEvent.clientX !== undefined
+          ? mouseEvent.clientX
+          : mouseEvent.pageX;
+      this.clientY =
+        mouseEvent.clientY !== undefined
+          ? mouseEvent.clientY
+          : mouseEvent.pageY;
       this.screenX = mouseEvent.screenX || 0;
       this.screenY = mouseEvent.screenY || 0;
     }
-  
+
     this.button = mouseEvent.button;
-  
-    let keyEvent = event as KeyboardEvent;
+
+    const keyEvent = event as KeyboardEvent;
     this.keyCode = keyEvent.keyCode || 0;
     this.key = keyEvent.key || '';
-    this.charCode = keyEvent.charCode || (type === 'keypress' ? keyEvent.keyCode : 0);
+    this.charCode =
+      keyEvent.charCode || (type === 'keypress' ? keyEvent.keyCode : 0);
     this.ctrlKey = keyEvent.ctrlKey;
     this.altKey = keyEvent.altKey;
     this.shiftKey = keyEvent.shiftKey;
     this.metaKey = keyEvent.metaKey;
     this.platformModifierKey = isMac ? keyEvent.metaKey : keyEvent.ctrlKey;
 
-    let popStateEvent = event as PopStateEvent;
+    const popStateEvent = event as PopStateEvent;
     this.state = popStateEvent.state;
 
-    let customEvent = event as CustomEvent;
+    const customEvent = event as CustomEvent;
     this.detail = customEvent.detail;
 
     this._event = event;
@@ -101,8 +119,10 @@ export class BrowserEvent extends MyEvent {
       this.preventDefault();
     }
   }
-  
-  stopPropagation() {
+
+  public stopPropagation() {
+    if (!this._event) throw new Error('BrowserEvent is undefined');
+
     super.stopPropagation();
 
     if (this._event.stopPropagation) {
@@ -111,8 +131,10 @@ export class BrowserEvent extends MyEvent {
       this._event.cancelBubble = true;
     }
   }
-  
-  preventDefault() {
+
+  public preventDefault() {
+    if (!this._event) throw new Error('BrowserEvent is undefined');
+
     super.preventDefault();
 
     if (!this._event.preventDefault) {
@@ -131,8 +153,11 @@ export class BrowserEvent extends MyEvent {
         // is pressed.
         const VK_F1 = 112;
         const VK_F12 = 123;
-        let keyEvent = this._event as _KeyboardEvent;
-        if (keyEvent.ctrlKey || keyEvent.keyCode >= VK_F1 && keyEvent.keyCode <= VK_F12) {
+        const keyEvent = this._event as ISpecialKeyboardEvent;
+        if (
+          keyEvent.ctrlKey ||
+          (keyEvent.keyCode >= VK_F1 && keyEvent.keyCode <= VK_F12)
+        ) {
           keyEvent.keyCode = -1;
         }
       } catch (ex) {
@@ -146,7 +171,8 @@ export class BrowserEvent extends MyEvent {
     }
   }
 
-  getBrowserEvent(): Event {
+  public getBrowserEvent(): Event {
+    if (!this._event) throw new Error('BrowserEvent is undefined');
     return this._event;
   }
 }

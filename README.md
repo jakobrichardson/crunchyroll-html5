@@ -1,21 +1,28 @@
 # HTML5 player for Crunchyroll
 
-[![Latest release](https://img.shields.io/github/release/YePpHa/crunchyroll-html5/all.svg)](https://github.com/YePpHa/crunchyroll-html5/releases/latest)
+[![Latest release](https://img.shields.io/github/release/YePpHa/crunchyroll-html5/all.svg)](https://github.com/YePpHa/crunchyroll-html5/releases/latest) [![Greenkeeper badge](https://badges.greenkeeper.io/YePpHa/crunchyroll-html5.svg)](https://greenkeeper.io/)
 
 We really don't like flash and want it killed ASAP. However, there's currently
 no HTML5 player available for Crunchyroll without having a subscription. So this
 is the answer.
 
 ## What is this fork?
-I created this fork to add support for manipulating subtitle styles. Crunchyroll does not normally aloww you to resize, change color, or change backgrounds on subtitles. For accessibility this poor to still be around in 2018 for a major service provider like them is just astounding. Since this HTML5 player converts CR's subtitles to ASS formet by building a string with a Styles section, I intercept that and apply transformations based on preferences stored in your browser's localStorage.
+I created this fork to add support for manipulating subtitle styles. Crunchyroll does not normally aloww you to resize, change color, or change backgrounds on subtitles. For ccessibility this poor to still be around in 2018 for a major service provider like them is just astounding. Since this HTML5 player converts CR's subtitles to ASS formet by building a string with a Styles section, I intercept that and apply transformations based on preferences stored in your browser's localStorage.
 
 There is a very rudimentary interface at this point. This is not designed for casual users. Also, it's only been tested in Chrome as a userscript.
 
 ## Features
 - A fully fledged HTML5 player that looks and feels a lot like YouTube's player.
-- Video quality based on the selected quality shown under the video.
-- Subtitles, we all want subtitles for our weeb shows. Otherwise the majority of
-  us won't be able to enjoy our shows.
+- Change video quality in the player.
+- Change subtitles in the player (using libass with [JavascriptSubtitlesOctopus](https://github.com/Dador/JavascriptSubtitlesOctopus)).
+- Speed controls.
+- Auto-play the next video.
+- Shortcuts ([see list of shortcuts](https://github.com/YePpHa/crunchyroll-html5/wiki/Shortcuts))
+
+## Download
+Chrome extension: https://chrome.google.com/webstore/detail/crunchyroll-html5/ihegfgnkffeibpmnajnoiemkcmlbmhmi
+
+Firefox addon: https://addons.mozilla.org/en-US/firefox/addon/crunchyroll-html5-unofficial/
 
 ## Screenshots
 ![Preview](https://github.com/YePpHa/crunchyroll-html5/raw/master/screenshots/preview.gif)

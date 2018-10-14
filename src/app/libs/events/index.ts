@@ -1,46 +1,55 @@
-import { ListenableKey } from './ListenableKey';
-import { Listenable, isImplementedBy as isImplementedByListenable } from './Listenable';
-import { ListenerMap } from './ListenerMap';
-import { PASSIVE_EVENTS } from './BrowserFeature';
-import { Listener } from './Listener';
-import { EventLike } from './Event';
 import { BrowserEvent } from './BrowserEvent';
-import { EventTarget as EventTarget2 } from './EventTarget';
+import { PASSIVE_EVENTS } from './BrowserFeature';
+import { EventLike } from './Event';
+import {
+  IListenable,
+  isImplementedBy as isImplementedByListenable,
+  ListneableFunction
+} from './IListenable';
+import { IListenableKey } from './IListenableKey';
+import { IListenableKeyRemoved } from './IListenableKeyRemoved';
+import { IProxyFunction } from './IProxyFunction';
+import { Listener } from './Listener';
+import { ListenerMap } from './ListenerMap';
 
-export declare interface ProxyFunction extends Function {
-  src?: EventTarget;
-  listener?: ListenableKey;
-}
-
-declare interface ListenableKeyRemoved extends ListenableKey {
-  removed: boolean;
-}
-
-const _LISTENER_MAP_PROP: string = '_listenerMap_' + ((Math.random() * 1e6) | 0);
-const _handleBrowserEvent: Function = (src: EventTarget|undefined, listener: Listener|undefined, event?: Event): any => {
+const _LISTENER_MAP_PROP: string =
+  '_listenerMap_' + ((Math.random() * 1e6) | 0);
+const _handleBrowserEvent = (
+  src: EventTarget | undefined,
+  listener: Listener | undefined,
+  event?: Event
+): any => {
   if (!listener) return;
 
   if (listener.removed) {
     return true;
   }
   return fireListener(listener, new BrowserEvent(event, src));
-}
+};
 
 let _listenerCountEstimate: number = 0;
 
-function _listen(src: EventTarget, type: string, listener: Function, callOnce: boolean = false, options: boolean|AddEventListenerOptions = false, scope?: Object): ListenableKey {
-  let listenerMap: ListenerMap|undefined = _getListenerMap(src);
+function _listen(
+  src: EventTarget,
+  type: string,
+  listener: ListneableFunction,
+  callOnce: boolean = false,
+  options: boolean | AddEventListenerOptions = false,
+  scope?: any
+): IListenableKey {
+  let listenerMap: ListenerMap | undefined = _getListenerMap(src);
   if (!listenerMap) {
     (src as any)[_LISTENER_MAP_PROP] = listenerMap = new ListenerMap(src);
   }
-  let capture: boolean = typeof options === 'object' ? !!options.capture : !!options;
+  const capture: boolean =
+    typeof options === 'object' ? !!options.capture : !!options;
 
-  let listenerObj = listenerMap.add(type, listener, callOnce, capture, scope);
+  const listenerObj = listenerMap.add(type, listener, callOnce, capture, scope);
   if (listenerObj.proxy) {
     return listenerObj;
   }
 
-  let proxy = getProxy();
+  const proxy = getProxy();
   listenerObj.proxy = proxy;
 
   proxy.src = src;
@@ -56,14 +65,14 @@ function _listen(src: EventTarget, type: string, listener: Function, callOnce: b
   return listenerObj;
 }
 
-function _getListenerMap(src: EventTarget): ListenerMap|undefined {
-  let listenerMap = (src as any)[_LISTENER_MAP_PROP];
+function _getListenerMap(src: EventTarget): ListenerMap | undefined {
+  const listenerMap = (src as any)[_LISTENER_MAP_PROP];
   return listenerMap instanceof ListenerMap ? listenerMap : undefined;
 }
 
-export function fireListener(listener: Listener, eventObject: Object): any {
-  let listenerFn = listener.listener;
-  let listenerHandler = listener.handler || listener.src;
+export function fireListener(listener: Listener, eventObject: object): any {
+  const listenerFn = listener.listener;
+  const listenerHandler = listener.handler || listener.src;
 
   if (listener.callOnce) {
     unlistenByKey(listener);
@@ -71,47 +80,63 @@ export function fireListener(listener: Listener, eventObject: Object): any {
   return listenerFn.call(listenerHandler, eventObject);
 }
 
-export function getProxy(): ProxyFunction {
-  let proxyCallbackFunction = _handleBrowserEvent;
+export function getProxy(): IProxyFunction {
+  const proxyCallbackFunction = _handleBrowserEvent;
   // Use a local let f to prevent one allocation.
-  let f: ProxyFunction = (eventObject: Event) =>
-    proxyCallbackFunction.call(
-      null,
-      f.src,
-      f.listener,
-      eventObject
-    );
+  const f: IProxyFunction = (eventObject: Event) =>
+    proxyCallbackFunction.call(null, f.src, f.listener, eventObject);
   return f;
 }
 
-export function listen(src: ListenableType, type: string, listener: Function, options: boolean|AddEventListenerOptions = false, scope?: Object): ListenableKey {
+export function listen(
+  src: ListenableType,
+  type: string,
+  listener: ListneableFunction,
+  options: boolean | AddEventListenerOptions = false,
+  scope?: any
+): IListenableKey {
   if (isImplementedByListenable(src)) {
-    let capture: boolean = typeof options === 'object' ? !!options.capture : !!options;
-    return (<Listenable> src).listen(type, listener, capture, scope);
+    const capture: boolean =
+      typeof options === 'object' ? !!options.capture : !!options;
+    return (src as IListenable).listen(type, listener, capture, scope);
   } else {
-    return _listen((<EventTarget> src), type, listener, false, options, scope);
+    return _listen(src as EventTarget, type, listener, false, options, scope);
   }
 }
 
-export function listenOnce(src: ListenableType, type: string, listener: Function, options: boolean|AddEventListenerOptions = false, scope?: Object): ListenableKey {
+export function listenOnce(
+  src: ListenableType,
+  type: string,
+  listener: ListneableFunction,
+  options: boolean | AddEventListenerOptions = false,
+  scope?: any
+): IListenableKey {
   if (isImplementedByListenable(src)) {
-    let capture: boolean = typeof options === 'object' ? !!options.capture : !!options;
-    return (<Listenable> src).listenOnce(type, listener, capture, scope);
+    const capture: boolean =
+      typeof options === 'object' ? !!options.capture : !!options;
+    return (src as IListenable).listenOnce(type, listener, capture, scope);
   } else {
-    return _listen((<EventTarget> src), type, listener, true, options, scope);
+    return _listen(src as EventTarget, type, listener, true, options, scope);
   }
 }
 
-export function unlisten(src: ListenableType, type: string, listener: Function, options: boolean|AddEventListenerOptions = false, scope?: Object): boolean {
-  let capture: boolean = typeof options === 'object' ? !!options.capture : !!options;
+export function unlisten(
+  src: ListenableType,
+  type: string,
+  listener: ListneableFunction,
+  options: boolean | AddEventListenerOptions = false,
+  scope?: any
+): boolean {
+  const capture: boolean =
+    typeof options === 'object' ? !!options.capture : !!options;
 
   if (isImplementedByListenable(src)) {
-    return (<Listenable> src).unlisten(type, listener, capture, scope);
+    return (src as IListenable).unlisten(type, listener, capture, scope);
   }
 
-  let listenerMap = _getListenerMap(<EventTarget> src);
+  const listenerMap = _getListenerMap(src as EventTarget);
   if (listenerMap) {
-    let listenerObj = listenerMap.getListener(type, listener, capture, scope);
+    const listenerObj = listenerMap.getListener(type, listener, capture, scope);
     if (listenerObj) {
       return unlistenByKey(listenerObj);
     }
@@ -120,33 +145,33 @@ export function unlisten(src: ListenableType, type: string, listener: Function, 
   return false;
 }
 
-export function unlistenByKey(listener: ListenableKey): boolean {
-  if (!listener || (listener as ListenableKeyRemoved).removed) {
+export function unlistenByKey(listener: IListenableKey): boolean {
+  if (!listener || (listener as IListenableKeyRemoved).removed) {
     return false;
   }
 
-  let src = listener.src;
+  const src = listener.src;
   if (isImplementedByListenable(src)) {
-    return (<Listenable> src).unlistenByKey(listener);
+    return (src as IListenable).unlistenByKey(listener);
   }
 
-  let type = listener.type;
-  let proxy = <EventListener> listener.proxy;
+  const type = listener.type;
+  const proxy = listener.proxy as EventListener;
 
-  let domSrc = <EventTarget> src;
+  const domSrc = src as EventTarget;
 
   domSrc.removeEventListener(type, proxy, listener.capture);
   _listenerCountEstimate--;
 
-  let listenerMap = _getListenerMap(<EventTarget> src);
+  const listenerMap = _getListenerMap(domSrc);
   if (listenerMap) {
     listenerMap.removeByKey(listener);
-    if (listenerMap.getTypeCount() == 0) {
+    if (listenerMap.getTypeCount() === 0) {
       listenerMap.src = undefined;
       (src as any)[_LISTENER_MAP_PROP] = undefined;
     }
   } else {
-    (<Listener> listener).markAsRemoved();
+    (listener as Listener).markAsRemoved();
   }
 
   return true;
@@ -155,23 +180,23 @@ export function unlistenByKey(listener: ListenableKey): boolean {
 export function removeAll(src?: ListenableType, type?: string): number {
   if (!src) return 0;
   if (isImplementedByListenable(src)) {
-    return (<Listenable> src).removeAllListeners(type);
+    return (src as IListenable).removeAllListeners(type);
   }
 
-  let listenerMap = _getListenerMap(<EventTarget> src);
+  const listenerMap = _getListenerMap(src as EventTarget);
   if (!listenerMap) {
     return 0;
   }
 
   let count = 0;
-  let typeStr = type;
-  for (let type in listenerMap.listeners) {
-    if (!typeStr || type == typeStr) {
+  const typeStr = type;
+  for (const x in listenerMap.listeners) {
+    if (!typeStr || x === typeStr) {
       // Clone so that we don't need to worry about unlistenByKey
       // changing the content of the ListenerMap.
-      let listeners = listenerMap.listeners[type].concat();
-      for (let i = 0; i < listeners.length; ++i) {
-        if (unlistenByKey(listeners[i])) {
+      const listeners = listenerMap.listeners[x].concat();
+      for (const listener of listeners) {
+        if (unlistenByKey(listener)) {
           ++count;
         }
       }
@@ -180,37 +205,51 @@ export function removeAll(src?: ListenableType, type?: string): number {
   return count;
 }
 
-export function getListeners(src: ListenableType, type: string, capture: boolean): ListenableKey[] {
+export function getListeners(
+  src: ListenableType,
+  type: string,
+  capture: boolean
+): IListenableKey[] {
   if (isImplementedByListenable(src)) {
-    return (<Listenable> src).getListeners(type, capture);
+    return (src as IListenable).getListeners(type, capture);
   } else {
-    let listenerMap = _getListenerMap(<EventTarget> src);
+    const listenerMap = _getListenerMap(src as EventTarget);
     return listenerMap ? listenerMap.getListeners(type, capture) : [];
   }
 }
 
-export function getListener(src: ListenableType, type: string, listener: Function, capture: boolean = false, scope?: Object): ListenableKey|undefined {
+export function getListener(
+  src: ListenableType,
+  type: string,
+  listener: ListneableFunction,
+  capture: boolean = false,
+  scope?: any
+): IListenableKey | undefined {
   if (isImplementedByListenable(src)) {
-    return (<Listenable> src).getListener(type, listener, capture, scope);
+    return (src as IListenable).getListener(type, listener, capture, scope);
   }
 
-  let listenerMap = _getListenerMap(<EventTarget> src);
+  const listenerMap = _getListenerMap(src as EventTarget);
   if (listenerMap) {
     return listenerMap.getListener(type, listener, capture, scope);
   }
   return undefined;
 }
 
-export function hasListener(src: ListenableType, type?: string, capture?: boolean): boolean {
+export function hasListener(
+  src: ListenableType,
+  type?: string,
+  capture?: boolean
+): boolean {
   if (isImplementedByListenable(src)) {
-    return (<Listenable> src).hasListener(type || '', capture);
+    return (src as IListenable).hasListener(type || '', capture);
   }
 
-  let listenerMap = _getListenerMap(<EventTarget> src);
+  const listenerMap = _getListenerMap(src as EventTarget);
   return !!listenerMap && listenerMap.hasListener(type, capture);
 }
 
-export function dispatchEvent(src: Listenable, event: EventLike) {
+export function dispatchEvent(src: IListenable, event: EventLike) {
   return src.dispatchEvent(event);
 }
 
@@ -218,5 +257,5 @@ export function getTotalListenerCount(): number {
   return _listenerCountEstimate;
 }
 
-export type ListenableType = EventTarget|Listenable;
-export type Key = number|ListenableKey;
+export type ListenableType = EventTarget | IListenable;
+export type Key = number | IListenableKey;

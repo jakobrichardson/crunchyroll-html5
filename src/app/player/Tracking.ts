@@ -1,13 +1,16 @@
-import { IPlayerApi, TimeUpdateEvent, SeekEvent, PlaybackStateChangeEvent, PlaybackState } from "../media/player/IPlayerApi";
-import { EventHandler } from "../libs/events/EventHandler";
-import { trackProgress } from "./crunchyroll";
-import { Disposable } from "../libs/disposable/Disposable";
-import { IMedia } from "crunchyroll-lib/models/IMedia";
+import { IMedia } from 'crunchyroll-lib/models/IMedia';
+import { Disposable } from '../libs/disposable/Disposable';
+import { EventHandler } from '../libs/events/EventHandler';
+import { IPlayerApi, PlaybackState } from '../media/player/IPlayerApi';
+import { PlaybackStateChangeEvent } from '../media/player/PlaybackStateChangeEvent';
+import { SeekEvent } from '../media/player/SeekEvent';
+import { TimeUpdateEvent } from '../media/player/TimeUpdateEvent';
+import { ITrackMedia, trackProgress } from './crunchyroll';
 
 export class VideoTracker extends Disposable {
   private _handler: EventHandler = new EventHandler(this);
 
-  private _media: IMedia;
+  private _media: ITrackMedia;
   private _api: IPlayerApi;
   private _elapsedTime: number = 0;
   private _lastTime: number = 0;
@@ -15,12 +18,15 @@ export class VideoTracker extends Disposable {
   private _intervals: number[];
   private _callCount: number = 0;
 
-  constructor(media: IMedia, api: IPlayerApi) {
+  private _affiliateCode?: string;
+
+  constructor(media: ITrackMedia, api: IPlayerApi, affiliateCode?: string) {
     super();
 
     this._media = media;
     this._api = api;
-    this._intervals = media.getPingIntervals();
+    this._intervals = media.pingIntervals;
+    this._affiliateCode = affiliateCode;
 
     this._handler
       .listen(api, 'playbackstatechange', this._onPlaybackStateChange, false)
@@ -38,13 +44,19 @@ export class VideoTracker extends Disposable {
     this._elapsedTime = 0;
     this._callCount++;
 
-    trackProgress(this._media, time, interval, this._callCount);
+    trackProgress(
+      this._media,
+      time,
+      interval,
+      this._callCount,
+      this._affiliateCode
+    );
   }
 
   private _getInterval() {
     const intervalIndex = Math.min(this._callCount, this._intervals.length - 1);
 
-    return this._intervals[intervalIndex]/1000;
+    return this._intervals[intervalIndex] / 1000;
   }
 
   private _onPlaybackStateChange(e: PlaybackStateChangeEvent) {
@@ -52,11 +64,11 @@ export class VideoTracker extends Disposable {
 
     this._track(this._api.getDuration(), this._getInterval());
   }
-  
+
   private _onSeek(e: SeekEvent) {
     this._lastTime = e.time;
   }
-  
+
   private _onTimeUpdate(e: TimeUpdateEvent) {
     const dt = Math.max(e.time - this._lastTime, 0);
     this._lastTime = e.time;
